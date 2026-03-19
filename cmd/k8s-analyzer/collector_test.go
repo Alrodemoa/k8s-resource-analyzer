@@ -5,7 +5,7 @@ import (
 )
 
 // ============================================================================
-// generateNodeRecommendation
+// Рекомендации для ноды
 // ============================================================================
 
 func TestGenerateNodeRecommendation_HighCPU(t *testing.T) {
@@ -13,7 +13,7 @@ func TestGenerateNodeRecommendation_HighCPU(t *testing.T) {
 	got := generateNodeRecommendation(node)
 	want := "⚠️ Высокая загрузка"
 	if got != want {
-		t.Errorf("got %q, want %q", got, want)
+		t.Errorf("получено %q, ожидалось %q", got, want)
 	}
 }
 
@@ -22,7 +22,7 @@ func TestGenerateNodeRecommendation_HighMemory(t *testing.T) {
 	got := generateNodeRecommendation(node)
 	want := "⚠️ Высокая загрузка"
 	if got != want {
-		t.Errorf("got %q, want %q", got, want)
+		t.Errorf("получено %q, ожидалось %q", got, want)
 	}
 }
 
@@ -31,7 +31,7 @@ func TestGenerateNodeRecommendation_BothHigh(t *testing.T) {
 	got := generateNodeRecommendation(node)
 	want := "⚠️ Высокая загрузка"
 	if got != want {
-		t.Errorf("got %q, want %q", got, want)
+		t.Errorf("получено %q, ожидалось %q", got, want)
 	}
 }
 
@@ -40,7 +40,7 @@ func TestGenerateNodeRecommendation_BothLow(t *testing.T) {
 	got := generateNodeRecommendation(node)
 	want := "💡 Недогружена"
 	if got != want {
-		t.Errorf("got %q, want %q", got, want)
+		t.Errorf("получено %q, ожидалось %q", got, want)
 	}
 }
 
@@ -49,7 +49,7 @@ func TestGenerateNodeRecommendation_Optimal(t *testing.T) {
 	got := generateNodeRecommendation(node)
 	want := "✅ Оптимально"
 	if got != want {
-		t.Errorf("got %q, want %q", got, want)
+		t.Errorf("получено %q, ожидалось %q", got, want)
 	}
 }
 
@@ -59,12 +59,12 @@ func TestGenerateNodeRecommendation_LowCPUHighMemory(t *testing.T) {
 	got := generateNodeRecommendation(node)
 	want := "⚠️ Высокая загрузка"
 	if got != want {
-		t.Errorf("got %q, want %q", got, want)
+		t.Errorf("получено %q, ожидалось %q", got, want)
 	}
 }
 
 // ============================================================================
-// updateMaxPodMetrics
+// Максимальные метрики подов
 // ============================================================================
 
 func TestUpdateMaxPodMetrics_UpdatesAll(t *testing.T) {
@@ -73,25 +73,25 @@ func TestUpdateMaxPodMetrics_UpdatesAll(t *testing.T) {
 	updateMaxPodMetrics(cluster, pod, "default", 500, 600, 1024, 2048)
 
 	if cluster.MaxPodCPUActual != 500 {
-		t.Errorf("MaxPodCPUActual = %.0f, want 500", cluster.MaxPodCPUActual)
+		t.Errorf("MaxPodCPUActual = %.0f, ожидалось 500", cluster.MaxPodCPUActual)
 	}
 	if cluster.MaxPodCPURequest != 600 {
-		t.Errorf("MaxPodCPURequest = %.0f, want 600", cluster.MaxPodCPURequest)
+		t.Errorf("MaxPodCPURequest = %.0f, ожидалось 600", cluster.MaxPodCPURequest)
 	}
 	if cluster.MaxPodMemoryActual != 1024 {
-		t.Errorf("MaxPodMemoryActual = %.0f, want 1024", cluster.MaxPodMemoryActual)
+		t.Errorf("MaxPodMemoryActual = %.0f, ожидалось 1024", cluster.MaxPodMemoryActual)
 	}
 	if cluster.MaxPodMemoryRequest != 2048 {
-		t.Errorf("MaxPodMemoryRequest = %.0f, want 2048", cluster.MaxPodMemoryRequest)
+		t.Errorf("MaxPodMemoryRequest = %.0f, ожидалось 2048", cluster.MaxPodMemoryRequest)
 	}
 	if cluster.MaxPodNameCPU != "my-pod" {
-		t.Errorf("MaxPodNameCPU = %q, want \"my-pod\"", cluster.MaxPodNameCPU)
+		t.Errorf("MaxPodNameCPU = %q, ожидалось \"my-pod\"", cluster.MaxPodNameCPU)
 	}
 	if cluster.MaxPodNameMemory != "my-pod" {
-		t.Errorf("MaxPodNameMemory = %q, want \"my-pod\"", cluster.MaxPodNameMemory)
+		t.Errorf("MaxPodNameMemory = %q, ожидалось \"my-pod\"", cluster.MaxPodNameMemory)
 	}
 	if cluster.MaxPodNamespaceCPU != "default" {
-		t.Errorf("MaxPodNamespaceCPU = %q, want \"default\"", cluster.MaxPodNamespaceCPU)
+		t.Errorf("MaxPodNamespaceCPU = %q, ожидалось \"default\"", cluster.MaxPodNamespaceCPU)
 	}
 }
 
@@ -106,13 +106,13 @@ func TestUpdateMaxPodMetrics_DoesNotDowngrade(t *testing.T) {
 	updateMaxPodMetrics(cluster, pod, "default", 100, 100, 100, 100)
 
 	if cluster.MaxPodCPUActual != 1000 {
-		t.Errorf("max should not decrease: got %.0f", cluster.MaxPodCPUActual)
+		t.Errorf("максимум не должен уменьшаться, получено %.0f", cluster.MaxPodCPUActual)
 	}
 	if cluster.MaxPodNameCPU != "big-pod" {
-		t.Errorf("name should not change: got %q", cluster.MaxPodNameCPU)
+		t.Errorf("имя не должно меняться, получено %q", cluster.MaxPodNameCPU)
 	}
 	if cluster.MaxPodMemoryActual != 2048 {
-		t.Errorf("max memory should not decrease: got %.0f", cluster.MaxPodMemoryActual)
+		t.Errorf("максимум памяти не должен уменьшаться, получено %.0f", cluster.MaxPodMemoryActual)
 	}
 }
 
@@ -122,12 +122,12 @@ func TestUpdateMaxPodMetrics_UpdatesOnEqual(t *testing.T) {
 	// Значение равно текущему максимуму — не должно обновиться (условие >)
 	updateMaxPodMetrics(cluster, pod, "ns", 500, 0, 0, 0)
 	if cluster.MaxPodNameCPU == "equal-pod" {
-		t.Errorf("name should not update on equal value")
+		t.Errorf("имя не должно обновляться при равном значении")
 	}
 }
 
 // ============================================================================
-// buildClusterSummary
+// Сводка кластера
 // ============================================================================
 
 func TestBuildClusterSummary_BasicAggregation(t *testing.T) {
@@ -146,19 +146,19 @@ func TestBuildClusterSummary_BasicAggregation(t *testing.T) {
 	cluster := buildClusterSummary(nodes, pvcs, pvs, namespaces)
 
 	if cluster.TotalNodes != 2 {
-		t.Errorf("TotalNodes = %d, want 2", cluster.TotalNodes)
+		t.Errorf("TotalNodes = %d, ожидалось 2", cluster.TotalNodes)
 	}
 	if cluster.TotalNodeCPUCapacity != 12000 {
-		t.Errorf("TotalNodeCPUCapacity = %.0f, want 12000", cluster.TotalNodeCPUCapacity)
+		t.Errorf("TotalNodeCPUCapacity = %.0f, ожидалось 12000", cluster.TotalNodeCPUCapacity)
 	}
 	if cluster.TotalNodeMemoryCapacity != 24576 {
-		t.Errorf("TotalNodeMemoryCapacity = %.0f, want 24576", cluster.TotalNodeMemoryCapacity)
+		t.Errorf("TotalNodeMemoryCapacity = %.0f, ожидалось 24576", cluster.TotalNodeMemoryCapacity)
 	}
 	if cluster.TotalPVCs != 1 {
-		t.Errorf("TotalPVCs = %d, want 1", cluster.TotalPVCs)
+		t.Errorf("TotalPVCs = %d, ожидалось 1", cluster.TotalPVCs)
 	}
 	if cluster.TotalPVs != 1 {
-		t.Errorf("TotalPVs = %d, want 1", cluster.TotalPVs)
+		t.Errorf("TotalPVs = %d, ожидалось 1", cluster.TotalPVs)
 	}
 }
 
@@ -168,7 +168,7 @@ func TestBuildClusterSummary_NamespacesInitialized(t *testing.T) {
 
 	for _, ns := range namespaces {
 		if _, ok := cluster.ByNamespace[ns]; !ok {
-			t.Errorf("namespace %q not initialized in ByNamespace", ns)
+			t.Errorf("неймспейс %q не инициализирован в ByNamespace", ns)
 		}
 	}
 }
@@ -181,10 +181,10 @@ func TestBuildClusterSummary_NodesMappedByName(t *testing.T) {
 	cluster := buildClusterSummary(nodes, nil, nil, nil)
 
 	if _, ok := cluster.ByNode["node-1"]; !ok {
-		t.Errorf("node-1 not found in ByNode map")
+		t.Errorf("node-1 не найдена в ByNode")
 	}
 	if _, ok := cluster.ByNode["node-2"]; !ok {
-		t.Errorf("node-2 not found in ByNode map")
+		t.Errorf("node-2 не найдена в ByNode")
 	}
 }
 
@@ -196,7 +196,7 @@ func TestBuildClusterSummary_PVCMappedByNamespaceName(t *testing.T) {
 
 	key := "default/pvc-data"
 	if _, ok := cluster.ByPVC[key]; !ok {
-		t.Errorf("PVC not found by key %q", key)
+		t.Errorf("PVC не найден по ключу %q", key)
 	}
 }
 
@@ -204,16 +204,16 @@ func TestBuildClusterSummary_EmptyInputs(t *testing.T) {
 	cluster := buildClusterSummary(nil, nil, nil, nil)
 
 	if cluster.TotalNodes != 0 || cluster.TotalPVCs != 0 || cluster.TotalPVs != 0 {
-		t.Errorf("expected zeros for empty input, got nodes=%d pvcs=%d pvs=%d",
+		t.Errorf("ожидались нули для пустых входных данных, получено nodes=%d pvcs=%d pvs=%d",
 			cluster.TotalNodes, cluster.TotalPVCs, cluster.TotalPVs)
 	}
 	if cluster.ByNamespace == nil || cluster.ByNode == nil {
-		t.Errorf("maps should be initialized, not nil")
+		t.Errorf("словари должны быть инициализированы, не nil")
 	}
 }
 
 // ============================================================================
-// calculateNodeUtilization
+// Утилизация нод
 // ============================================================================
 
 func TestCalculateNodeUtilization_Percentages(t *testing.T) {
@@ -233,16 +233,16 @@ func TestCalculateNodeUtilization_Percentages(t *testing.T) {
 	calculateNodeUtilization(cluster)
 
 	if node.CPUUtilization != 50.0 {
-		t.Errorf("CPUUtilization = %.1f, want 50.0", node.CPUUtilization)
+		t.Errorf("CPUUtilization = %.1f, ожидалось 50.0", node.CPUUtilization)
 	}
 	if node.MemoryUtilization != 50.0 {
-		t.Errorf("MemoryUtilization = %.1f, want 50.0", node.MemoryUtilization)
+		t.Errorf("MemoryUtilization = %.1f, ожидалось 50.0", node.MemoryUtilization)
 	}
 	if node.CPURequestUtil != 75.0 {
-		t.Errorf("CPURequestUtil = %.1f, want 75.0", node.CPURequestUtil)
+		t.Errorf("CPURequestUtil = %.1f, ожидалось 75.0", node.CPURequestUtil)
 	}
 	if node.MemoryRequestUtil != 75.0 {
-		t.Errorf("MemoryRequestUtil = %.1f, want 75.0", node.MemoryRequestUtil)
+		t.Errorf("MemoryRequestUtil = %.1f, ожидалось 75.0", node.MemoryRequestUtil)
 	}
 }
 
@@ -262,7 +262,7 @@ func TestCalculateNodeUtilization_ZeroCapacity(t *testing.T) {
 	calculateNodeUtilization(cluster)
 
 	if node.CPUUtilization != 0 {
-		t.Errorf("expected 0 utilization for zero capacity, got %.2f", node.CPUUtilization)
+		t.Errorf("ожидалась 0 утилизация при нулевой ёмкости, получено %.2f", node.CPUUtilization)
 	}
 }
 
@@ -281,6 +281,6 @@ func TestCalculateNodeUtilization_SetsRecommendation(t *testing.T) {
 	calculateNodeUtilization(cluster)
 
 	if node.Recommendation == "" {
-		t.Errorf("expected recommendation to be set, got empty string")
+		t.Errorf("ожидалось, что рекомендация будет заполнена, получена пустая строка")
 	}
 }

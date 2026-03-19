@@ -53,6 +53,11 @@ func printBanner() {
 		bufferPercent)
 }
 
+// printVersion - вывод версии программы
+func printVersion() {
+	fmt.Printf("k8s-analyzer v%s\n", AppVersion)
+}
+
 // printHelp - вывод справки
 func printHelp() {
 	sep := ansiCyan + strings.Repeat("─", ConsoleWidth) + ansiReset
@@ -65,6 +70,7 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println(ansiYellow + ansiBold + "  Опции:" + ansiReset)
 	fmt.Println(ansiGreen + "    -b, --buffer <число>" + ansiReset + "   Процент запаса ресурсов " + ansiGray + "(по умолчанию 50)" + ansiReset)
+	fmt.Println(ansiGreen + "    -v, --version" + ansiReset + "          Показать версию программы")
 	fmt.Println(ansiGreen + "    -h, --help" + ansiReset + "             Показать эту справку")
 	fmt.Println()
 	fmt.Println(ansiYellow + ansiBold + "  Примеры:" + ansiReset)

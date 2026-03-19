@@ -1,4 +1,4 @@
-// K8s Resource Analyzer v1.0
+// K8s Resource Analyzer
 //
 // Анализатор ресурсов Kubernetes кластера с Excel отчётностью
 //
@@ -12,8 +12,6 @@
 // - analyzer.go   - Анализ и расчёты
 // - excel.go      - Генерация Excel отчёта
 // - ui.go         - Консольный интерфейс
-//
-// Все комментарии на русском языке
 
 package main
 
@@ -48,15 +46,24 @@ func main() {
 // parseFlags - парсинг флагов командной строки
 func parseFlags() {
 	var help bool
+	var version bool
 	var buffer int
 
 	flag.IntVar(&buffer, "buffer", 50, "Процент запаса ресурсов (по умолчанию 50)")
 	flag.IntVar(&buffer, "b", 50, "Процент запаса ресурсов (сокращенно)")
 	flag.BoolVar(&help, "help", false, "Показать справку")
 	flag.BoolVar(&help, "h", false, "Показать справку (сокращенно)")
+	flag.BoolVar(&version, "version", false, "Показать версию программы")
+	flag.BoolVar(&version, "v", false, "Показать версию программы (сокращенно)")
 	flag.Parse()
 
 	bufferPercent = buffer
+
+	// Версия выводится первой и завершает программу
+	if version {
+		printVersion()
+		os.Exit(0)
+	}
 
 	if help {
 		printHelp()
