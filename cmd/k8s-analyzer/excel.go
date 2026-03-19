@@ -875,8 +875,8 @@ func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSum
 }
 
 // addChartToSheet - добавление графика на лист
-func addChartToSheet(f *excelize.File, sheetName string, 
-	chartType string, title string, 
+func addChartToSheet(f *excelize.File, sheetName string,
+	chartType excelize.ChartType, title string,
 	categories string, values string, 
 	position string) error {
 	
@@ -895,9 +895,9 @@ func addChartToSheet(f *excelize.File, sheetName string,
 			ScaleY:          1.0,
 			OffsetX:         15,
 			OffsetY:         10,
-			PrintObject:     excelize.Bool(true),
+			PrintObject:     boolPtr(true),
 			LockAspectRatio: false,
-			Locked:          excelize.Bool(false),
+			Locked:          boolPtr(false),
 		},
 		Title: []excelize.RichTextRun{
 			{
@@ -1140,6 +1140,74 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 	
 	// Примечание: Графики будут добавляться в отдельных листах для лучшей визуализации
 	// так как в сводке уже много данных
+}
+
+// boolPtr - вспомогательная функция для создания указателя на bool
+func boolPtr(b bool) *bool { return &b }
+
+// addSectionHeader - добавляет заголовок секции на лист
+func addSectionHeader(f *excelize.File, sheetName string, row int, title string, styles map[string]int) int {
+	cell := fmt.Sprintf("A%d", row)
+	endCell := fmt.Sprintf("F%d", row)
+	f.SetCellValue(sheetName, cell, title)
+	f.MergeCell(sheetName, cell, endCell)
+	f.SetCellStyle(sheetName, cell, endCell, styles["tableHeader"])
+	f.SetRowHeight(sheetName, row, 25)
+	return row + 1
+}
+
+// getStatus - возвращает текстовый статус по значению эффективности
+func getStatus(eff float64) string {
+	switch {
+	case eff > EfficiencyCritical:
+		return "Критично"
+	case eff > EfficiencyHigh:
+		return "Высокое"
+	case eff > EfficiencyNormal:
+		return "Норма"
+	case eff > EfficiencyLow:
+		return "Низкое"
+	default:
+		return "Минимум"
+	}
+}
+
+// addMetricRow - добавляет строку с метрикой и процентом от общего
+func addMetricRow(f *excelize.File, sheetName string, row int, label string,
+	value float64, total float64, isCPU bool, styles map[string]int) int {
+
+	var valueStr string
+	if isCPU {
+		valueStr = fmt.Sprintf("%.0fm (%.2f ядер)", value, value/MillicoresInCore)
+	} else {
+		valueStr = formatMemoryValue(value)
+	}
+
+	percent := 0.0
+	if total > 0 {
+		percent = (value / total) * 100
+	}
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), label)
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), valueStr)
+	f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), fmt.Sprintf("%.1f%%", percent))
+	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
+	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
+	f.SetCellStyle(sheetName, fmt.Sprintf("C%d", row), fmt.Sprintf("C%d", row),
+		getStyleByEfficiency(styles, percent))
+	return row + 1
+}
+
+// addEfficiencyRow - добавляет строку с процентом эффективности
+func addEfficiencyRow(f *excelize.File, sheetName string, row int, label string,
+	eff float64, styles map[string]int) int {
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), label)
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("%.1f%%", eff))
+	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
+	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row),
+		getStyleByEfficiency(styles, eff))
+	return row + 1
 }
 
 // sanitizeSheetName - очистка имени листа Excel
