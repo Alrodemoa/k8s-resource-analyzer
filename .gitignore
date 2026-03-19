@@ -1,0 +1,44 @@
+# Бинарники
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Тестовые артефакты
+*.test
+*.out
+
+# Отчёты
+*.xlsx
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Временные файлы
+tmp/
+temp/
+*.log
+
+# Зависимости
+vendor/
+
+# Внутренние гайды — не для репо
+CI-CD-GUIDE.md
+GITHUB-ACTIONS-SETUP.md
+QUICKSTART.md
+build.go
+scripts/
