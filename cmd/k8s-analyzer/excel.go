@@ -357,8 +357,8 @@ func createEnhancedNodesSheet(f *excelize.File, cluster *ClusterSummary,
 	// Заголовки колонок
 	headers := []string{
 		"Нода", "Поды",
-		"CPU\nЕмкость", "CPU\nRequests", "CPU\nActual", "CPU Req\n%", "CPU Act\n%",
-		"Память\nЕмкость", "Память\nRequests", "Память\nActual", "Mem Req\n%", "Mem Act\n%",
+		"CPU\nЕмкость", "CPU\nЗапросы", "CPU\nФакт", "CPU Зап\n%", "CPU Факт\n%",
+		"Память\nЕмкость", "Память\nЗапросы", "Память\nФакт", "Пам Зап\n%", "Пам Факт\n%",
 		"Рекомендации",
 	}
 
@@ -474,7 +474,7 @@ func createEnhancedPVCSheet(f *excelize.File, cluster *ClusterSummary,
 
 	headers := []string{
 		"Неймспейс", "Имя PVC", "Статус", "Том",
-		"Емкость", "Запрошено", "StorageClass", "Режимы доступа",
+		"Емкость", "Запрошено", "Класс хранилища", "Режимы доступа",
 	}
 
 	row := 3
@@ -554,7 +554,7 @@ func createEnhancedPVSheet(f *excelize.File, cluster *ClusterSummary,
 	f.SetRowHeight(sheetName, 1, 30)
 
 	headers := []string{
-		"Имя PV", "Емкость", "Статус", "Claim", "StorageClass",
+		"Имя PV", "Емкость", "Статус", "Привязка", "Класс хранилища",
 	}
 
 	row := 3
@@ -749,8 +749,8 @@ func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSum
 		// Заголовки таблицы
 		headers := []string{
 			"Имя пода", "Нода", "PVC",
-			"CPU\nRequest", "CPU\nActual", "CPU\nLimit", "CPU\nЭфф %",
-			"Память\nRequest", "Память\nActual", "Память\nLimit", "Память\nЭфф %",
+			"CPU\nЗапрос", "CPU\nФакт", "CPU\nЛимит", "CPU\nЭфф %",
+			"Память\nЗапрос", "Память\nФакт", "Память\nЛимит", "Память\nЭфф %",
 			"Рекомендации", "Статус",
 		}
 		

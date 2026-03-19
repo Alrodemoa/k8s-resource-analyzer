@@ -23,7 +23,7 @@ jobs:
 
     steps:
     - name: Установка системных зависимостей
-      run: apk add --no-cache git ca-certificates
+      run: apk add --no-cache git ca-certificates coreutils
 
     - name: Checkout код
       uses: actions/checkout@v4
@@ -32,6 +32,12 @@ jobs:
       run: |
         go mod download
         go mod tidy
+
+    - name: Линтер (go vet)
+      run: go vet ./...
+
+    - name: Запуск тестов
+      run: go test -v -count=1 ./cmd/k8s-analyzer/...
 
     - name: Создание директории bin
       run: mkdir -p bin

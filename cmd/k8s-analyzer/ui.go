@@ -30,9 +30,9 @@ func printBanner() {
 
 	// ASCII-арт "K8s" + информация справа
 	logo := []string{
-		ansiYellow + ansiBold + `  ██╗  ██╗  █████╗   ██████╗  ` + ansiReset + `  ` + ansiWhite + ansiBold + `Resource Analyzer` + ansiReset,
+		ansiYellow + ansiBold + `  ██╗  ██╗  █████╗   ██████╗  ` + ansiReset + `  ` + ansiWhite + ansiBold + `Анализатор ресурсов` + ansiReset,
 		ansiYellow + ansiBold + `  ██║ ██╔╝ ██╔══██╗ ██╔════╝  ` + ansiReset + `  ` + ansiGray + strings.Repeat("─", 40) + ansiReset,
-		ansiYellow + ansiBold + `  █████╔╝  ╚█████╔╝ ╚█████╗   ` + ansiReset + `  ` + ansiGreen + ansiBold + `v` + AppVersion + ansiReset + ansiGray + `  ·  Kubernetes Cluster` + ansiReset,
+		ansiYellow + ansiBold + `  █████╔╝  ╚█████╔╝ ╚█████╗   ` + ansiReset + `  ` + ansiGreen + ansiBold + `v` + AppVersion + ansiReset + ansiGray + `  ·  Kubernetes Кластер` + ansiReset,
 		ansiYellow + ansiBold + `  ██╔═██╗  ██╔══██╗  ╚════██╗ ` + ansiReset + `  ` + ansiBlue + `Анализ и оптимизация ресурсов` + ansiReset,
 		ansiYellow + ansiBold + `  ██║  ██╗ ╚█████╔╝  ██████╔╝ ` + ansiReset + `  ` + ansiBlue + `кластера с Excel отчётом` + ansiReset,
 		ansiYellow + ansiBold + `  ╚═╝  ╚═╝  ╚════╝   ╚═════╝  ` + ansiReset,
@@ -124,7 +124,7 @@ func printFinalSummary(cluster *ClusterSummary, startTime time.Time, filename st
 	// CPU
 	fmt.Println()
 	fmt.Println(ansiYellow + ansiBold + "  💻 CPU" + ansiReset)
-	fmt.Printf(ansiGray+"     Requests:      "+ansiReset+ansiWhite+"%-12s"+ansiReset+"\n", formatCPUValue(cluster.TotalCPURequest))
+	fmt.Printf(ansiGray+"     Запросы:       "+ansiReset+ansiWhite+"%-12s"+ansiReset+"\n", formatCPUValue(cluster.TotalCPURequest))
 	fmt.Printf(ansiGray+"     Фактически:    "+ansiReset+ansiWhite+"%-12s"+ansiReset+"\n", formatCPUValue(cluster.TotalCPUActual))
 	fmt.Printf(ansiGray+"     Рекомендуется: "+ansiReset+ansiWhite+"%-12s"+ansiReset+"\n", formatCPUValue(cluster.TotalCPURecommended))
 
@@ -143,7 +143,7 @@ func printFinalSummary(cluster *ClusterSummary, startTime time.Time, filename st
 	// Память
 	fmt.Println()
 	fmt.Println(ansiYellow + ansiBold + "  💾 Память" + ansiReset)
-	fmt.Printf(ansiGray+"     Requests:      "+ansiReset+ansiWhite+"%-12s"+ansiReset+"\n", formatMemoryValue(cluster.TotalMemRequest))
+	fmt.Printf(ansiGray+"     Запросы:       "+ansiReset+ansiWhite+"%-12s"+ansiReset+"\n", formatMemoryValue(cluster.TotalMemRequest))
 	fmt.Printf(ansiGray+"     Фактически:    "+ansiReset+ansiWhite+"%-12s"+ansiReset+"\n", formatMemoryValue(cluster.TotalMemActual))
 	fmt.Printf(ansiGray+"     Рекомендуется: "+ansiReset+ansiWhite+"%-12s"+ansiReset+"\n", formatMemoryValue(cluster.TotalMemRecommended))
 
