@@ -11,7 +11,7 @@ YELLOW=\033[0;33m
 BLUE=\033[0;34m
 NC=\033[0m
 
-.PHONY: all build clean install help build-all
+.PHONY: all build clean install help
 
 all: build
 
@@ -24,7 +24,6 @@ help:
 	@echo "$(BLUE)Основные команды:$(NC)"
 	@echo "  $(GREEN)make install$(NC)    - Установить зависимости"
 	@echo "  $(GREEN)make build$(NC)      - Собрать для текущей платформы"
-	@echo "  $(GREEN)make build-all$(NC)  - Собрать для всех платформ"
 	@echo "  $(GREEN)make clean$(NC)      - Очистить собранные файлы"
 	@echo "  $(GREEN)make run$(NC)        - Запустить приложение"
 	@echo ""
@@ -46,40 +45,6 @@ build:
 	@go build $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/k8s-analyzer
 	@echo "$(GREEN)✅ Готово: bin/$(BINARY_NAME)$(NC)"
 	@ls -lh bin/$(BINARY_NAME)
-
-## build-all: Собрать для всех платформ (Windows, Linux, macOS)
-build-all: clean install
-	@echo "$(GREEN)╔════════════════════════════════════════╗$(NC)"
-	@echo "$(GREEN)║  Сборка для всех платформ              ║$(NC)"
-	@echo "$(GREEN)╚════════════════════════════════════════╝$(NC)"
-	@mkdir -p bin
-	@echo ""
-	@echo "$(YELLOW)→ Linux AMD64...$(NC)"
-	@GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-amd64 ./cmd/k8s-analyzer
-	@echo "$(GREEN)  ✓ bin/$(BINARY_NAME)-linux-amd64$(NC)"
-	@echo ""
-	@echo "$(YELLOW)→ Linux ARM64...$(NC)"
-	@GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-arm64 ./cmd/k8s-analyzer
-	@echo "$(GREEN)  ✓ bin/$(BINARY_NAME)-linux-arm64$(NC)"
-	@echo ""
-	@echo "$(YELLOW)→ macOS Intel (x86_64)...$(NC)"
-	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-amd64 ./cmd/k8s-analyzer
-	@echo "$(GREEN)  ✓ bin/$(BINARY_NAME)-darwin-amd64$(NC)"
-	@echo ""
-	@echo "$(YELLOW)→ macOS Apple Silicon (ARM64)...$(NC)"
-	@GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64 ./cmd/k8s-analyzer
-	@echo "$(GREEN)  ✓ bin/$(BINARY_NAME)-darwin-arm64$(NC)"
-	@echo ""
-	@echo "$(YELLOW)→ Windows AMD64...$(NC)"
-	@GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-amd64.exe ./cmd/k8s-analyzer
-	@echo "$(GREEN)  ✓ bin/$(BINARY_NAME)-windows-amd64.exe$(NC)"
-	@echo ""
-	@echo "$(GREEN)╔════════════════════════════════════════╗$(NC)"
-	@echo "$(GREEN)║  ✅ Сборка завершена!                  ║$(NC)"
-	@echo "$(GREEN)╚════════════════════════════════════════╝$(NC)"
-	@echo ""
-	@echo "$(BLUE)Созданные бинарники:$(NC)"
-	@ls -lh bin/
 
 ## clean: Очистить собранные файлы
 clean:
