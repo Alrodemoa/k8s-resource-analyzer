@@ -292,12 +292,12 @@ func getPVCsInfo() []*PVCInfo {
 			pvcInfo.Requested = capacity.String()
 		}
 
-		// Storage Class
+		// Класс хранилища
 		if pvc.Spec.StorageClassName != nil {
 			pvcInfo.StorageClass = *pvc.Spec.StorageClassName
 		}
 
-		// Access Modes
+		// Режимы доступа
 		for _, mode := range pvc.Spec.AccessModes {
 			pvcInfo.AccessModes = append(pvcInfo.AccessModes, string(mode))
 		}
@@ -333,10 +333,10 @@ func getPVsInfo() []*PVInfo {
 			pvInfo.Capacity = capacity.String()
 		}
 
-		// Storage Class
+		// Класс хранилища
 		pvInfo.StorageClass = pv.Spec.StorageClassName
 
-		// Claim Reference
+		// Ссылка на PVC
 		if pv.Spec.ClaimRef != nil {
 			pvInfo.Claim = fmt.Sprintf("%s/%s", pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
 		}

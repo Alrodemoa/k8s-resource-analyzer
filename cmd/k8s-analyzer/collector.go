@@ -6,6 +6,9 @@ import (
 	"fmt"
 )
 
+// podHistories - глобальное хранилище исторических данных (заполняется при -d / --duration)
+var podHistories map[string]*PodHistory
+
 // collectClusterData - главная функция сбора данных кластера
 func collectClusterData() *ClusterSummary {
 	printStep("📊 Анализ Kubernetes кластера...")
@@ -36,6 +39,52 @@ func collectClusterData() *ClusterSummary {
 	pvcs := getPVCsInfo()
 	pvs := getPVsInfo()
 	printStep(fmt.Sprintf("✅ Найдено PVC: %d, PV: %d", len(pvcs), len(pvs)))
+
+	// Сбор исторических данных (если задан период --duration)
+	if collectDuration != "" {
+		duration, err := parseDuration(collectDuration)
+		if err != nil {
+			printError(fmt.Sprintf("❌ Неверный формат периода: %s (используйте: 30m, 2h, 7d, 1w)", collectDuration))
+		} else {
+			if prometheusURL != "" {
+				// Режим: исторические данные из Prometheus/Thanos
+				printStep(fmt.Sprintf("📡 Режим: исторический анализ из Prometheus (%s) за %s", prometheusURL, collectDuration))
+				if !checkPrometheusConnection(prometheusURL) {
+					printError(fmt.Sprintf("❌ Не удалось подключиться к Prometheus: %s", prometheusURL))
+					printError("   Продолжаем с текущими метриками Metrics Server")
+				} else {
+					printStep("✅ Подключение к Prometheus установлено")
+
+					// Автоопределение кластера в Thanos (если не задан явно)
+					resolvedLabel := thanosClusterLabel
+					resolvedCluster := thanosCluster
+					if resolvedCluster == "" {
+						currentCtx := getCurrentKubeContext()
+						lbl, cls, e := detectThanosCluster(prometheusURL, currentCtx)
+						if e != nil {
+							// Ошибка уже напечатана внутри detectThanosCluster
+							printError("   Продолжаем без фильтрации по кластеру")
+						} else if cls != "" {
+							resolvedLabel = lbl
+							resolvedCluster = cls
+							printStep(fmt.Sprintf("✅ Кластер определён автоматически: %s=%s", lbl, cls))
+						}
+						// cls == "" означает одиночный Prometheus без multi-cluster лейблов
+					} else {
+						printStep(fmt.Sprintf("✅ Кластер задан явно: %s=%s", resolvedLabel, resolvedCluster))
+					}
+
+					podHistories = getPrometheusHistoricalMetrics(prometheusURL, duration, selectedNamespaces, resolvedLabel, resolvedCluster)
+					printStep(fmt.Sprintf("✅ Получена история по %d подам", len(podHistories)))
+					prometheusMode = true
+				}
+			} else {
+				// Режим: живой сбор через Metrics Server
+				printStep(fmt.Sprintf("⏱️  Режим: живой сбор метрик в течение %s", collectDuration))
+				podHistories = collectLiveMetrics(duration, selectedNamespaces)
+			}
+		}
+	}
 
 	// Собираем данные по подам
 	printStep("📦 Сбор информации о подах...")
@@ -81,16 +130,28 @@ func collectPodsData(namespaces []string) map[string]map[string]*PodResource {
 		// Получаем ресурсы подов
 		pods := getPodResources(ns)
 		
-		// Получаем фактическое использование
-		actualUsage := getPodActualUsage(ns)
-		
-		// Обогащаем данные фактическим использованием
-		for _, pod := range pods {
-			if usage, ok := actualUsage[pod.Name]; ok {
-				pod.CPUActual = usage["cpu"]
-				pod.MemoryActual = usage["memory"]
+		// В Prometheus-режиме Metrics Server не опрашиваем —
+		// фактические значения подставятся из podHistories ниже
+		if !prometheusMode {
+			actualUsage := getPodActualUsage(ns)
+			for _, pod := range pods {
+				if usage, ok := actualUsage[pod.Name]; ok {
+					pod.CPUActual = usage["cpu"]
+					pod.MemoryActual = usage["memory"]
+				}
 			}
-			
+		}
+
+		for _, pod := range pods {
+			// Подставляем данные из Prometheus или живого сбора
+			histKey := ns + "/" + pod.Name
+			if podHistories != nil {
+				if hist, ok := podHistories[histKey]; ok && hist.SampleCount > 0 {
+					pod.CPUActual = formatCPUValue(hist.CPUAvg)
+					pod.MemoryActual = formatMemoryValue(hist.MemAvg)
+				}
+			}
+
 			// Рассчитываем эффективность
 			memEff := calculateMemoryEfficiency(pod)
 			cpuEff := calculateCPUEfficiency(pod)
@@ -99,9 +160,11 @@ func collectPodsData(namespaces []string) map[string]map[string]*PodResource {
 			pod.Recommendation = generatePodRecommendation(pod, memEff, cpuEff)
 			pod.Status = determinePodStatus(memEff, cpuEff)
 			
-			// Рассчитываем рекомендуемые значения
+			// Рассчитываем рекомендуемые значения (факт + буфер)
 			pod.RecommendedCPU = calculateRecommendedCPU(pod)
 			pod.RecommendedMem = calculateRecommendedMemory(pod)
+			pod.RecommendedCPULimit = calculateRecommendedLimit(pod.CPUActual, false)
+			pod.RecommendedMemLimit = calculateRecommendedLimit(pod.MemoryActual, true)
 		}
 		
 		allPods[ns] = make(map[string]*PodResource)
@@ -171,17 +234,21 @@ func processPodsMetrics(cluster *ClusterSummary, allPods map[string]map[string]*
 			// Парсим значения
 			cpuReq := parseCPUValue(pod.CPURequest)
 			cpuAct := parseCPUValue(pod.CPUActual)
+			cpuLim := parseCPUValue(pod.CPULimit)
 			cpuRec := parseCPUValue(pod.RecommendedCPU)
 			memReq := parseMemoryValue(pod.MemoryRequest)
 			memAct := parseMemoryValue(pod.MemoryActual)
+			memLim := parseMemoryValue(pod.MemoryLimit)
 			memRec := parseMemoryValue(pod.RecommendedMem)
 
 			// Обновляем общие суммы
 			cluster.TotalCPURequest += cpuReq
 			cluster.TotalCPUActual += cpuAct
+			cluster.TotalCPULimit += cpuLim
 			cluster.TotalCPURecommended += cpuRec
 			cluster.TotalMemRequest += memReq
 			cluster.TotalMemActual += memAct
+			cluster.TotalMemLimit += memLim
 			cluster.TotalMemRecommended += memRec
 
 			// Обновляем суммы по неймспейсу

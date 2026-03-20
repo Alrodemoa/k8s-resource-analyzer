@@ -26,7 +26,7 @@ const (
 )
 
 // Версия приложения
-const AppVersion = "1.0"
+const AppVersion = "1.1.1"
 
 // Глобальная переменная для процента запаса
 var bufferPercent int
