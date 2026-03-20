@@ -22,7 +22,7 @@ jobs:
     name: Линтер и тесты
     runs-on: ubuntu-latest
     container:
-      image: golang:1.21-alpine
+      image: golang:1.26-alpine
     steps:
       - name: Установка системных зависимостей
         run: apk add --no-cache git ca-certificates
@@ -51,7 +51,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.26'
 
       - name: GoReleaser snapshot (все платформы, без публикации)
         uses: goreleaser/goreleaser-action@v5
@@ -78,7 +78,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.26'
 
       - name: Запуск GoReleaser
         uses: goreleaser/goreleaser-action@v5
@@ -136,7 +136,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.26'
 
       - name: Версия из тега
         shell: bash
@@ -187,7 +187,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.26'
 
       - name: Версия из тега
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
