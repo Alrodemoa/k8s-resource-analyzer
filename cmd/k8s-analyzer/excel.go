@@ -29,7 +29,7 @@ func getStyleByEfficiency(styles map[string]int, eff float64) int {
 }
 
 // ============================================================================
-// EXCEL REPORT GENERATION
+// ГЕНЕРАЦИЯ EXCEL ОТЧЁТА
 // ============================================================================
 
 // generateExcelReport - генерация Excel отчета
@@ -58,6 +58,11 @@ func generateExcelReport(cluster *ClusterSummary) string {
 
 	// Создаём лист RBAC
 	createRBACSheet(f, cluster, styles)
+
+	// Создаём лист исторических метрик (только если данные были собраны)
+	if len(podHistories) > 0 {
+		createHistorySheet(f, podHistories, styles)
+	}
 
 	// Удаляем дефолтный лист Sheet1 (он создаётся автоматически)
 	if index, err := f.GetSheetIndex("Sheet1"); err == nil && index >= 0 {
@@ -622,7 +627,7 @@ func createEnhancedPVSheet(f *excelize.File, cluster *ClusterSummary,
 
 
 // ============================================================================
-// USER INTERACTION
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ СБОРА ДАННЫХ
 // ============================================================================
 
 // interactiveNamespaceSelect - интерактивный выбор неймспейсов
@@ -631,7 +636,7 @@ func collectAllPodsForReport(cluster *ClusterSummary) map[string]map[string]*Pod
 	
 	// Собираем поды по каждому неймспейсу из кластера
 	for ns := range cluster.ByNamespace {
-		// Получаем requests и limits
+		// Получаем запросы и лимиты ресурсов
 		pods := getPodResources(ns)
 		if len(pods) > 0 {
 			if allPods[ns] == nil {
@@ -642,7 +647,7 @@ func collectAllPodsForReport(cluster *ClusterSummary) map[string]map[string]*Pod
 			}
 		}
 		
-		// Получаем actual usage
+		// Получаем фактическое использование ресурсов
 		actualData := getPodActualUsage(ns)
 		for podName, usage := range actualData {
 			if pod, exists := allPods[ns][podName]; exists {
@@ -802,17 +807,17 @@ func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSum
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+2, row),
 				fmt.Sprintf("%c%d", col+2, row), styles["data"])
 			
-			// CPU Request
+			// CPU — запрос
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+3, row), pod.CPURequest)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+3, row),
 				fmt.Sprintf("%c%d", col+3, row), styles["number"])
-			
-			// CPU Actual
+
+			// CPU — факт
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+4, row), pod.CPUActual)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+4, row),
 				fmt.Sprintf("%c%d", col+4, row), styles["number"])
-			
-			// CPU Limit
+
+			// CPU — лимит
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+5, row), pod.CPULimit)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+5, row),
 				fmt.Sprintf("%c%d", col+5, row), styles["number"])
@@ -823,22 +828,22 @@ func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSum
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+6, row),
 				fmt.Sprintf("%c%d", col+6, row), getStyleByEfficiency(styles, cpuEff))
 			
-			// Memory Request
+			// Память — запрос
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+7, row), pod.MemoryRequest)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+7, row),
 				fmt.Sprintf("%c%d", col+7, row), styles["number"])
-			
-			// Memory Actual
+
+			// Память — факт
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+8, row), pod.MemoryActual)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+8, row),
 				fmt.Sprintf("%c%d", col+8, row), styles["number"])
-			
-			// Memory Limit
+
+			// Память — лимит
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+9, row), pod.MemoryLimit)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+9, row),
 				fmt.Sprintf("%c%d", col+9, row), styles["number"])
-			
-			// Memory Эффективность
+
+			// Память — эффективность
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+10, row), 
 				fmt.Sprintf("%.1f%%", memEff))
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+10, row),
@@ -1361,6 +1366,136 @@ func createGatekeeperSheet(f *excelize.File, cluster *ClusterSummary, styles map
 		YSplit:      2,
 		TopLeftCell: "A3",
 		ActivePane:  "bottomLeft",
+	})
+}
+
+// createHistorySheet - создание листа с историческими метриками (min/avg/max/p95)
+func createHistorySheet(f *excelize.File, histories map[string]*PodHistory, styles map[string]int) {
+	sheetName := "📈 История"
+	f.NewSheet(sheetName)
+
+	// Заголовок
+	f.SetCellValue(sheetName, "A1", "📈 ИСТОРИЧЕСКИЕ МЕТРИКИ ПОДОВ")
+	f.SetCellStyle(sheetName, "A1", "L1", styles["mainHeader"])
+	f.MergeCell(sheetName, "A1", "L1")
+	f.SetRowHeight(sheetName, 1, 35)
+
+	// Подзаголовок с режимом
+	modeLabel := "Живой сбор"
+	if prometheusURL != "" {
+		modeLabel = fmt.Sprintf("Prometheus: %s", prometheusURL)
+	}
+	periodLabel := collectDuration
+	if periodLabel == "" {
+		periodLabel = "разовый"
+	}
+	f.SetCellValue(sheetName, "A2",
+		fmt.Sprintf("Режим: %s  |  Период: %s", modeLabel, periodLabel))
+	f.SetCellStyle(sheetName, "A2", "L2", styles["data"])
+	f.MergeCell(sheetName, "A2", "L2")
+	f.SetRowHeight(sheetName, 2, 20)
+
+	row := 4
+
+	// Заголовки таблицы
+	headers := []string{
+		"Неймспейс", "Под",
+		"CPU Min", "CPU Avg", "CPU Max", "CPU P95",
+		"Mem Min", "Mem Avg", "Mem Max", "Mem P95",
+		"Семплов", "Статус CPU",
+	}
+	for i, h := range headers {
+		cell := fmt.Sprintf("%c%d", 'A'+i, row)
+		f.SetCellValue(sheetName, cell, h)
+		f.SetCellStyle(sheetName, cell, cell, styles["tableHeader"])
+	}
+	f.SetRowHeight(sheetName, row, 30)
+	headerRow := row
+	row++
+
+	// Сортируем поды по неймспейсу и имени
+	type histEntry struct {
+		key  string
+		hist *PodHistory
+	}
+	var entries []histEntry
+	for k, h := range histories {
+		entries = append(entries, histEntry{k, h})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].hist.Namespace != entries[j].hist.Namespace {
+			return entries[i].hist.Namespace < entries[j].hist.Namespace
+		}
+		return entries[i].hist.Name < entries[j].hist.Name
+	})
+
+	for _, e := range entries {
+		h := e.hist
+		if h.SampleCount == 0 {
+			continue
+		}
+
+		// Определяем стиль по P95 CPU относительно среднего (признак нестабильности)
+		cpuVolatility := 0.0
+		if h.CPUAvg > 0 {
+			cpuVolatility = ((h.CPUP95 - h.CPUAvg) / h.CPUAvg) * 100
+		}
+		cpuStyle := styles["data"]
+		statusLabel := "Стабильно"
+		switch {
+		case cpuVolatility > 100:
+			cpuStyle = styles["critical"]
+			statusLabel = "Очень нестабильно"
+		case cpuVolatility > 50:
+			cpuStyle = styles["high"]
+			statusLabel = "Нестабильно"
+		case cpuVolatility > 20:
+			cpuStyle = styles["low"]
+			statusLabel = "Небольшие пики"
+		}
+
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), h.Namespace)
+		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), h.Name)
+		f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), formatCPUValue(h.CPUMin))
+		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), formatCPUValue(h.CPUAvg))
+		f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), formatCPUValue(h.CPUMax))
+		f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), formatCPUValue(h.CPUP95))
+		f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), formatMemoryValue(h.MemMin))
+		f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), formatMemoryValue(h.MemAvg))
+		f.SetCellValue(sheetName, fmt.Sprintf("I%d", row), formatMemoryValue(h.MemMax))
+		f.SetCellValue(sheetName, fmt.Sprintf("J%d", row), formatMemoryValue(h.MemP95))
+		f.SetCellValue(sheetName, fmt.Sprintf("K%d", row), h.SampleCount)
+		f.SetCellValue(sheetName, fmt.Sprintf("L%d", row), statusLabel)
+
+		for _, col := range []string{"A", "B", "C", "D", "E", "G", "H", "I", "J", "K"} {
+			f.SetCellStyle(sheetName, fmt.Sprintf("%s%d", col, row), fmt.Sprintf("%s%d", col, row), styles["data"])
+		}
+		// P95 CPU и статус — цветные
+		f.SetCellStyle(sheetName, fmt.Sprintf("F%d", row), fmt.Sprintf("F%d", row), cpuStyle)
+		f.SetCellStyle(sheetName, fmt.Sprintf("L%d", row), fmt.Sprintf("L%d", row), cpuStyle)
+
+		row++
+	}
+
+	// Автофильтр
+	f.AutoFilter(sheetName, fmt.Sprintf("A%d:L%d", headerRow, headerRow), nil)
+
+	// Ширина колонок
+	colWidths := map[string]float64{
+		"A": 25, "B": 45, "C": 14, "D": 14, "E": 14, "F": 14,
+		"G": 14, "H": 14, "I": 14, "J": 14, "K": 12, "L": 20,
+	}
+	for col, w := range colWidths {
+		f.SetColWidth(sheetName, col, col, w)
+	}
+
+	// Закрепляем заголовки
+	f.SetPanes(sheetName, &excelize.Panes{
+		Freeze:      true,
+		XSplit:      2,
+		YSplit:      headerRow,
+		TopLeftCell: fmt.Sprintf("C%d", headerRow+1),
+		ActivePane:  "bottomRight",
 	})
 }
 

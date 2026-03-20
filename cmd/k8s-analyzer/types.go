@@ -5,10 +5,12 @@ type ClusterSummary struct {
 	TotalPods               int                          // Общее количество подов
 	TotalCPURequest         float64                      // Общий CPU request
 	TotalCPUActual          float64                      // Общее фактическое использование CPU
+	TotalCPULimit           float64                      // Общий CPU limit
 	TotalCPURecommended     float64                      // Рекомендуемый CPU (от requests)
 	TotalCPUOptimized       float64                      // Оптимизированный CPU (от actual)
 	TotalMemRequest         float64                      // Общая память request
 	TotalMemActual          float64                      // Общее фактическое использование памяти
+	TotalMemLimit           float64                      // Общая память limit
 	TotalMemRecommended     float64                      // Рекомендуемая память (от requests)
 	TotalMemOptimized       float64                      // Оптимизированная память (от actual)
 	TotalNodes              int                          // Количество нод
@@ -69,15 +71,17 @@ type PodResource struct {
 	Namespace      string   // Неймспейс
 	Name           string   // Имя пода
 	NodeName       string   // Нода, на которой запущен под
-	CPURequest     string   // CPU request
-	CPULimit       string   // CPU limit
+	CPURequest     string   // Запрос CPU
+	CPULimit       string   // Лимит CPU
 	CPUActual      string   // Фактическое использование CPU
-	MemoryRequest  string   // Memory request
-	MemoryLimit    string   // Memory limit
+	MemoryRequest  string   // Запрос памяти
+	MemoryLimit    string   // Лимит памяти
 	MemoryActual   string   // Фактическое использование памяти
-	RecommendedCPU string   // Рекомендуемый CPU
-	RecommendedMem string   // Рекомендуемая память
-	Recommendation string   // Рекомендации
+	RecommendedCPU      string   // Рекомендуемый CPU request (факт + буфер)
+	RecommendedMem      string   // Рекомендуемая память request (факт + буфер)
+	RecommendedCPULimit string   // Рекомендуемый CPU limit (факт + буфер)
+	RecommendedMemLimit string   // Рекомендуемый лимит памяти (факт + буфер)
+	Recommendation      string   // Рекомендации
 	Status         string   // Статус эффективности
 	PVCs           []string // Список привязанных PVC
 }
@@ -142,4 +146,26 @@ type RBACEntry struct {
 	BindingKind string // RoleBinding, ClusterRoleBinding
 	Scope       string // cluster или namespace
 	BoundIn     string // Неймспейс привязки (для RoleBinding)
+}
+
+// MetricSample - одна точка метрики с временной меткой
+type MetricSample struct {
+	Value float64 // Значение метрики (timestamp не нужен — используем только порядок)
+}
+
+// PodHistory - исторические метрики пода (статистика за период)
+type PodHistory struct {
+	Namespace   string         // Неймспейс пода
+	Name        string         // Имя пода
+	CPUMin      float64        // Минимальное потребление CPU (millicores)
+	CPUAvg      float64        // Среднее потребление CPU (millicores)
+	CPUMax      float64        // Максимальное потребление CPU (millicores)
+	CPUP95      float64        // Перцентиль P95 CPU (millicores)
+	MemMin      float64        // Минимальное потребление памяти (MiB)
+	MemAvg      float64        // Среднее потребление памяти (MiB)
+	MemMax      float64        // Максимальное потребление памяти (MiB)
+	MemP95      float64        // Перцентиль P95 памяти (MiB)
+	SampleCount int            // Количество собранных семплов
+	CPUSamples  []MetricSample // Сырые семплы CPU
+	MemSamples  []MetricSample // Сырые семплы памяти
 }
