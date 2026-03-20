@@ -192,7 +192,7 @@ jobs:
           go-msi make \
             --msi ../dist/k8s-analyzer-windows-amd64.msi \
             --version "${{ env.VERSION }}" \
-            --path .
+            --wixfile wix.json
 
       - name: Загрузка MSI в релиз
         if: startsWith(github.ref, 'refs/tags/')
@@ -237,7 +237,6 @@ jobs:
           chmod +x pkg-amd64/usr/local/bin/k8s-analyzer
           pkgbuild \
             --root pkg-amd64 \
-            --scripts packaging/macos/scripts \
             --identifier com.alrodemoa.k8s-analyzer \
             --version "${{ env.VERSION }}" \
             --install-location / \
@@ -250,7 +249,6 @@ jobs:
           chmod +x pkg-arm64/usr/local/bin/k8s-analyzer
           pkgbuild \
             --root pkg-arm64 \
-            --scripts packaging/macos/scripts \
             --identifier com.alrodemoa.k8s-analyzer \
             --version "${{ env.VERSION }}" \
             --install-location / \
