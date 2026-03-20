@@ -1,138 +1,210 @@
-name: Build and Release
+name: CI / Release
 
 on:
-  # Запуск при открытии или обновлении Pull Request
+  # Проверка при открытии или обновлении Pull Request
   pull_request:
-    branches:
-      - main
-      - master
+    branches: [main, master]
 
-  # Запуск при создании тега релиза
+  # Полный пайплайн при пуше тега релиза
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
-  # Запуск вручную из интерфейса GitHub
+  # Ручной запуск из интерфейса GitHub
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Сборка для всех платформ
-    runs-on: ubuntu-latest
 
-    # Весь job выполняется внутри Alpine-контейнера с Go
+  # ─── Линтер и тесты (всегда) ─────────────────────────────────────────────
+  test:
+    name: Линтер и тесты
+    runs-on: ubuntu-latest
     container:
       image: golang:1.21-alpine
-
     steps:
-    - name: Установка системных зависимостей
-      run: apk add --no-cache git ca-certificates coreutils
+      - name: Установка системных зависимостей
+        run: apk add --no-cache git ca-certificates
 
-    - name: Checkout код
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Установка зависимостей
-      run: |
-        go mod download
-        go mod tidy
+      - name: Загрузка Go-зависимостей
+        run: go mod download && go mod tidy
 
-    - name: Линтер (go vet)
-      run: go vet ./...
+      - name: Линтер (go vet)
+        run: go vet ./...
 
-    - name: Запуск тестов
-      run: go test -v -count=1 ./cmd/k8s-analyzer/...
+      - name: Тесты
+        run: go test -v -count=1 ./cmd/k8s-analyzer/...
 
-    - name: Создание директории bin
-      run: mkdir -p bin
+  # ─── GoReleaser: сборка + архивы + DEB/RPM + GitHub Release ──────────────
+  goreleaser:
+    name: GoReleaser
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # GoReleaser требует полную историю для корректной работы с тегами
+          fetch-depth: 0
 
-    - name: Сборка Linux AMD64
-      run: |
-        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags "-s -w" -o bin/k8s-analyzer-linux-amd64 ./cmd/k8s-analyzer
-        chmod +x bin/k8s-analyzer-linux-amd64
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
 
-    - name: Сборка Linux ARM64
-      run: |
-        CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -buildvcs=false -ldflags "-s -w" -o bin/k8s-analyzer-linux-arm64 ./cmd/k8s-analyzer
-        chmod +x bin/k8s-analyzer-linux-arm64
+      - name: Запуск GoReleaser
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Сборка macOS Intel (AMD64)
-      run: |
-        CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags "-s -w" -o bin/k8s-analyzer-darwin-amd64 ./cmd/k8s-analyzer
-        chmod +x bin/k8s-analyzer-darwin-amd64
+  # ─── Docker образ на Alpine → ghcr.io ────────────────────────────────────
+  docker:
+    name: Docker образ (ghcr.io)
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
 
-    - name: Сборка macOS Apple Silicon (ARM64)
-      run: |
-        CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags "-s -w" -o bin/k8s-analyzer-darwin-arm64 ./cmd/k8s-analyzer
-        chmod +x bin/k8s-analyzer-darwin-arm64
+      - name: Авторизация в GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Сборка Windows AMD64
-      run: |
-        CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildvcs=false -ldflags "-s -w" -o bin/k8s-analyzer-windows-amd64.exe ./cmd/k8s-analyzer
+      - name: Настройка QEMU (для multi-arch)
+        uses: docker/setup-qemu-action@v3
 
-    - name: Показать размеры бинарников
-      run: ls -lh bin/
+      - name: Настройка Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    # Только при пуше тега — создаём контрольные суммы и сохраняем артефакты
-    - name: Создание SHA256 контрольных сумм
-      if: startsWith(github.ref, 'refs/tags/')
-      run: |
-        cd bin
-        sha256sum * > SHA256SUMS.txt
-        cat SHA256SUMS.txt
+      - name: Сборка и публикация multi-arch образа
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}:latest
 
-    - name: Загрузка артефактов релиза
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: actions/upload-artifact@v4
-      with:
-        name: k8s-analyzer-${{ github.ref_name }}
-        path: bin/*
-        retention-days: 30
+  # ─── MSI пакет Windows ───────────────────────────────────────────────────
+  # Запускается после goreleaser — загружает MSI в уже созданный релиз
+  build-msi:
+    name: Windows MSI
+    needs: goreleaser
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
 
-    # Создание релиза только при пуше тега
-    - name: Создание GitHub Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          bin/k8s-analyzer-linux-amd64
-          bin/k8s-analyzer-linux-arm64
-          bin/k8s-analyzer-darwin-amd64
-          bin/k8s-analyzer-darwin-arm64
-          bin/k8s-analyzer-windows-amd64.exe
-          bin/SHA256SUMS.txt
-        body: |
-          ## K8s Analyzer ${{ github.ref_name }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
 
-          ### Скачать бинарники:
+      - name: Версия из тега
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
 
-          | Платформа | Архитектура | Файл |
-          |-----------|-------------|------|
-          | Linux | AMD64 | `k8s-analyzer-linux-amd64` |
-          | Linux | ARM64 | `k8s-analyzer-linux-arm64` |
-          | macOS | Intel | `k8s-analyzer-darwin-amd64` |
-          | macOS | Apple Silicon | `k8s-analyzer-darwin-arm64` |
-          | Windows | AMD64 | `k8s-analyzer-windows-amd64.exe` |
+      - name: Сборка Windows бинарника
+        shell: bash
+        run: |
+          mkdir -p msi-work
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -buildvcs=false \
+            -ldflags "-s -w" \
+            -o msi-work/k8s-analyzer.exe ./cmd/k8s-analyzer
 
-          ### Установка:
+      - name: Установка WiX Toolset
+        shell: powershell
+        run: choco install wixtoolset -y --no-progress
 
-          **Linux/macOS:**
-          ```bash
-          curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/k8s-analyzer-linux-amd64
-          chmod +x k8s-analyzer-linux-amd64
-          ./k8s-analyzer-linux-amd64 -b 50
-          ```
+      - name: Установка go-msi
+        shell: bash
+        run: go install github.com/mh-cbon/go-msi@latest
 
-          **Windows:**
-          ```powershell
-          k8s-analyzer-windows-amd64.exe -b 50
-          ```
+      - name: Сборка MSI
+        shell: bash
+        run: |
+          cp packaging/wix/wix.json msi-work/wix.json
+          cp LICENSE msi-work/LICENSE
+          mkdir -p dist
+          cd msi-work
+          go-msi make \
+            --msi ../dist/k8s-analyzer-windows-amd64.msi \
+            --version "${{ env.VERSION }}" \
+            --path .
 
-          ### Проверка контрольных сумм:
+      - name: Загрузка MSI в релиз
+        shell: bash
+        run: gh release upload "${{ github.ref_name }}" dist/k8s-analyzer-windows-amd64.msi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          ```bash
-          sha256sum -c SHA256SUMS.txt
-          ```
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  # ─── macOS .pkg ──────────────────────────────────────────────────────────
+  # Запускается после goreleaser — загружает .pkg в уже созданный релиз
+  build-macos-pkg:
+    name: macOS .pkg
+    needs: goreleaser
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Версия из тега
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+      - name: Сборка macOS бинарников (amd64 + arm64)
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -buildvcs=false \
+            -ldflags "-s -w" -o dist/k8s-analyzer-darwin-amd64 ./cmd/k8s-analyzer
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -buildvcs=false \
+            -ldflags "-s -w" -o dist/k8s-analyzer-darwin-arm64 ./cmd/k8s-analyzer
+          chmod +x dist/k8s-analyzer-darwin-amd64 dist/k8s-analyzer-darwin-arm64
+
+      - name: Сборка .pkg (Intel AMD64)
+        run: |
+          mkdir -p pkg-amd64/usr/local/bin
+          cp dist/k8s-analyzer-darwin-amd64 pkg-amd64/usr/local/bin/k8s-analyzer
+          chmod +x pkg-amd64/usr/local/bin/k8s-analyzer
+          pkgbuild \
+            --root pkg-amd64 \
+            --scripts packaging/macos/scripts \
+            --identifier com.alrodemoa.k8s-analyzer \
+            --version "${{ env.VERSION }}" \
+            --install-location / \
+            dist/k8s-analyzer-darwin-amd64.pkg
+
+      - name: Сборка .pkg (Apple Silicon ARM64)
+        run: |
+          mkdir -p pkg-arm64/usr/local/bin
+          cp dist/k8s-analyzer-darwin-arm64 pkg-arm64/usr/local/bin/k8s-analyzer
+          chmod +x pkg-arm64/usr/local/bin/k8s-analyzer
+          pkgbuild \
+            --root pkg-arm64 \
+            --scripts packaging/macos/scripts \
+            --identifier com.alrodemoa.k8s-analyzer \
+            --version "${{ env.VERSION }}" \
+            --install-location / \
+            dist/k8s-analyzer-darwin-arm64.pkg
+
+      - name: Загрузка .pkg в релиз
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            dist/k8s-analyzer-darwin-amd64.pkg \
+            dist/k8s-analyzer-darwin-arm64.pkg
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
