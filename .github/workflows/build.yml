@@ -3,7 +3,7 @@ name: CI / Release
 on:
   # Проверка при открытии или обновлении Pull Request
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
   # Полный пайплайн при пуше тега релиза
   push:
