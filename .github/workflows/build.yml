@@ -62,6 +62,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # dist/ создаётся локально и не сохраняется — только проверка сборки
 
+      - name: Настройка Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Сборка Docker образа (без публикации)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          tags: k8s-analyzer:snapshot
+
   # ─── GoReleaser: сборка + архивы + DEB/RPM + GitHub Release ──────────────
   goreleaser:
     name: GoReleaser (release)
