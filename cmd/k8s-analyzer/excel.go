@@ -53,6 +53,12 @@ func generateExcelReport(cluster *ClusterSummary) string {
 	allPods := collectAllPodsForReport(cluster)
 	createEnhancedNamespaceSheetsWithPods(f, cluster, allPods, styles)
 
+	// Создаём лист Gatekeeper
+	createGatekeeperSheet(f, cluster, styles)
+
+	// Создаём лист RBAC
+	createRBACSheet(f, cluster, styles)
+
 	// Удаляем дефолтный лист Sheet1 (он создаётся автоматически)
 	if index, err := f.GetSheetIndex("Sheet1"); err == nil && index >= 0 {
 		f.DeleteSheet("Sheet1")
@@ -238,7 +244,7 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 	// Данные (чистый белый фон с переносом строк)
 	data, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
-			Size:   11,
+			Size:   12,
 			Family: "Calibri",
 		},
 		Fill: excelize.Fill{
@@ -263,7 +269,7 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 	// Числа
 	number, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
-			Size:   11,
+			Size:   12,
 			Family: "Calibri",
 		},
 		Fill: excelize.Fill{
@@ -1210,4 +1216,301 @@ func addEfficiencyRow(f *excelize.File, sheetName string, row int, label string,
 	return row + 1
 }
 
-// sanitizeSheetName - очистка имени листа Excel
+// sanitizeSheetName - очистка имени листа Excel (реализация в utils.go)
+
+// createGatekeeperSheet - создание листа с анализом Gatekeeper
+func createGatekeeperSheet(f *excelize.File, cluster *ClusterSummary, styles map[string]int) {
+	sheetName := "🔒 Gatekeeper"
+	f.NewSheet(sheetName)
+
+	f.SetCellValue(sheetName, "A1", "🔒 АНАЛИЗ ПОЛИТИК OPA GATEKEEPER")
+	f.SetCellStyle(sheetName, "A1", "G1", styles["mainHeader"])
+	f.MergeCell(sheetName, "A1", "G1")
+	f.SetRowHeight(sheetName, 1, 35)
+
+	row := 3
+	gk := cluster.Gatekeeper
+
+	// Статус установки
+	row = addSectionHeader(f, sheetName, row, "📋 СТАТУС GATEKEEPER", styles)
+
+	statusText := "Не установлен"
+	statusStyle := styles["warning"]
+	if gk != nil && gk.Installed {
+		if gk.Running {
+			statusText = fmt.Sprintf("Активен (%d под(ов) работает)", gk.PodCount)
+			statusStyle = styles["good"]
+		} else {
+			statusText = "Установлен, но не запущен"
+			statusStyle = styles["critical"]
+		}
+	}
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Статус:")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), statusText)
+	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
+	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), statusStyle)
+	row++
+
+	if gk == nil || !gk.Installed {
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Рекомендация:")
+		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row),
+			"Gatekeeper не обнаружен. Рекомендуется установить OPA Gatekeeper для управления политиками кластера.")
+		f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["warning"])
+		f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("G%d", row), styles["data"])
+		f.MergeCell(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("G%d", row))
+
+		f.SetColWidth(sheetName, "A", "A", 30)
+		f.SetColWidth(sheetName, "B", "G", 25)
+		return
+	}
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Шаблонов ограничений:")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), len(gk.ConstraintTemplates))
+	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
+	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
+	row++
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Активных ограничений:")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), len(gk.Constraints))
+	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
+	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
+	row += 2
+
+	// Таблица шаблонов ограничений
+	if len(gk.ConstraintTemplates) > 0 {
+		row = addSectionHeader(f, sheetName, row, "📄 ШАБЛОНЫ ОГРАНИЧЕНИЙ (ConstraintTemplates)", styles)
+
+		templateHeaders := []string{"Имя шаблона", "Kind ограничения"}
+		for i, h := range templateHeaders {
+			cell := fmt.Sprintf("%c%d", 'A'+i, row)
+			f.SetCellValue(sheetName, cell, h)
+			f.SetCellStyle(sheetName, cell, cell, styles["tableHeader"])
+		}
+		f.SetRowHeight(sheetName, row, 25)
+		row++
+
+		for _, tmpl := range gk.ConstraintTemplates {
+			f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), tmpl.Name)
+			f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), tmpl.Kind)
+			f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["data"])
+			f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
+			row++
+		}
+		row++
+	}
+
+	// Таблица ограничений
+	if len(gk.Constraints) > 0 {
+		row = addSectionHeader(f, sheetName, row, "⚙️  АКТИВНЫЕ ОГРАНИЧЕНИЯ (Constraints)", styles)
+
+		constraintHeaders := []string{"Имя", "Тип", "Режим", "Нарушений", "Неймспейсы"}
+		for i, h := range constraintHeaders {
+			cell := fmt.Sprintf("%c%d", 'A'+i, row)
+			f.SetCellValue(sheetName, cell, h)
+			f.SetCellStyle(sheetName, cell, cell, styles["tableHeader"])
+		}
+		f.SetRowHeight(sheetName, row, 25)
+		row++
+
+		for _, c := range gk.Constraints {
+			enfStyle := styles["good"]
+			switch c.EnforcementAction {
+			case "warn":
+				enfStyle = styles["warning"]
+			case "dryrun":
+				enfStyle = styles["low"]
+			}
+
+			violStyle := styles["data"]
+			if c.TotalViolations > 0 {
+				violStyle = styles["critical"]
+			}
+
+			nsText := "Все неймспейсы"
+			if len(c.Namespaces) > 0 {
+				nsText = strings.Join(c.Namespaces, ", ")
+			}
+
+			f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), c.Name)
+			f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), c.Kind)
+			f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), c.EnforcementAction)
+			f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), c.TotalViolations)
+			f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), nsText)
+			f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["data"])
+			f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
+			f.SetCellStyle(sheetName, fmt.Sprintf("C%d", row), fmt.Sprintf("C%d", row), enfStyle)
+			f.SetCellStyle(sheetName, fmt.Sprintf("D%d", row), fmt.Sprintf("D%d", row), violStyle)
+			f.SetCellStyle(sheetName, fmt.Sprintf("E%d", row), fmt.Sprintf("E%d", row), styles["data"])
+			row++
+		}
+
+		f.AutoFilter(sheetName, fmt.Sprintf("A%d:E%d", row-len(gk.Constraints)-1, row-len(gk.Constraints)-1), nil)
+	}
+
+	// Ширина колонок
+	f.SetColWidth(sheetName, "A", "A", 40)
+	f.SetColWidth(sheetName, "B", "B", 30)
+	f.SetColWidth(sheetName, "C", "C", 15)
+	f.SetColWidth(sheetName, "D", "D", 15)
+	f.SetColWidth(sheetName, "E", "E", 50)
+
+	f.SetPanes(sheetName, &excelize.Panes{
+		Freeze:      true,
+		XSplit:      0,
+		YSplit:      2,
+		TopLeftCell: "A3",
+		ActivePane:  "bottomLeft",
+	})
+}
+
+// createRBACSheet - создание листа с анализом прав доступа
+func createRBACSheet(f *excelize.File, cluster *ClusterSummary, styles map[string]int) {
+	sheetName := "👥 RBAC"
+	f.NewSheet(sheetName)
+
+	f.SetCellValue(sheetName, "A1", "👥 ПРАВА ДОСТУПА КЛАСТЕРА (RBAC)")
+	f.SetCellStyle(sheetName, "A1", "H1", styles["mainHeader"])
+	f.MergeCell(sheetName, "A1", "H1")
+	f.SetRowHeight(sheetName, 1, 35)
+
+	row := 3
+
+	// Статистика
+	row = addSectionHeader(f, sheetName, row, "📊 СТАТИСТИКА RBAC", styles)
+
+	clusterLevel := 0
+	nsLevel := 0
+	users := make(map[string]bool)
+	sas := make(map[string]bool)
+	groups := make(map[string]bool)
+
+	for _, e := range cluster.RBACEntries {
+		if e.Scope == "cluster" {
+			clusterLevel++
+		} else {
+			nsLevel++
+		}
+		switch e.SubjectKind {
+		case "User":
+			users[e.Subject] = true
+		case "ServiceAccount":
+			sas[e.Subject+"/"+e.SubjectNS] = true
+		case "Group":
+			groups[e.Subject] = true
+		}
+	}
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Привязок на уровне кластера:")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), clusterLevel)
+	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
+	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
+	row++
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Привязок на уровне неймспейса:")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), nsLevel)
+	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
+	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
+	row++
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Уникальных пользователей (User):")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), len(users))
+	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
+	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
+	row++
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Сервисных аккаунтов (ServiceAccount):")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), len(sas))
+	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
+	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
+	row++
+
+	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Групп (Group):")
+	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), len(groups))
+	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
+	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
+	row += 2
+
+	// Таблица привязок ролей
+	row = addSectionHeader(f, sheetName, row, "🔑 ПОЛНЫЙ СПИСОК ПРИВЯЗОК РОЛЕЙ", styles)
+
+	headers := []string{
+		"Субъект", "Тип субъекта", "Неймспейс субъекта",
+		"Роль", "Тип роли", "Привязка", "Тип привязки", "Область / Неймспейс",
+	}
+	for i, h := range headers {
+		cell := fmt.Sprintf("%c%d", 'A'+i, row)
+		f.SetCellValue(sheetName, cell, h)
+		f.SetCellStyle(sheetName, cell, cell, styles["tableHeader"])
+	}
+	f.SetRowHeight(sheetName, row, 30)
+	headerRow := row
+	row++
+
+	// Сортируем записи: сначала Users, затем Groups, затем ServiceAccounts
+	sorted := make([]*RBACEntry, len(cluster.RBACEntries))
+	copy(sorted, cluster.RBACEntries)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].SubjectKind != sorted[j].SubjectKind {
+			order := map[string]int{"User": 0, "Group": 1, "ServiceAccount": 2}
+			return order[sorted[i].SubjectKind] < order[sorted[j].SubjectKind]
+		}
+		if sorted[i].Subject != sorted[j].Subject {
+			return sorted[i].Subject < sorted[j].Subject
+		}
+		return sorted[i].BoundIn < sorted[j].BoundIn
+	})
+
+	for _, e := range sorted {
+		subjectStyle := styles["data"]
+		switch e.SubjectKind {
+		case "User":
+			subjectStyle = styles["good"]
+		case "Group":
+			subjectStyle = styles["warning"]
+		}
+
+		scopeText := "Весь кластер"
+		if e.BoundIn != "" {
+			scopeText = e.BoundIn
+		}
+
+		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), e.Subject)
+		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), e.SubjectKind)
+		f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), e.SubjectNS)
+		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), e.Role)
+		f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), e.RoleKind)
+		f.SetCellValue(sheetName, fmt.Sprintf("F%d", row), e.BindingName)
+		f.SetCellValue(sheetName, fmt.Sprintf("G%d", row), e.BindingKind)
+		f.SetCellValue(sheetName, fmt.Sprintf("H%d", row), scopeText)
+
+		f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), subjectStyle)
+		f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
+		f.SetCellStyle(sheetName, fmt.Sprintf("C%d", row), fmt.Sprintf("C%d", row), styles["data"])
+		f.SetCellStyle(sheetName, fmt.Sprintf("D%d", row), fmt.Sprintf("D%d", row), styles["data"])
+		f.SetCellStyle(sheetName, fmt.Sprintf("E%d", row), fmt.Sprintf("E%d", row), styles["data"])
+		f.SetCellStyle(sheetName, fmt.Sprintf("F%d", row), fmt.Sprintf("F%d", row), styles["data"])
+		f.SetCellStyle(sheetName, fmt.Sprintf("G%d", row), fmt.Sprintf("G%d", row), styles["data"])
+		f.SetCellStyle(sheetName, fmt.Sprintf("H%d", row), fmt.Sprintf("H%d", row), styles["data"])
+		row++
+	}
+
+	// Автофильтр
+	lastDataCol := "H"
+	f.AutoFilter(sheetName, fmt.Sprintf("A%d:%s%d", headerRow, lastDataCol, headerRow), nil)
+
+	// Ширина колонок
+	colWidths := []float64{35, 20, 25, 35, 15, 45, 20, 30}
+	for i, width := range colWidths {
+		f.SetColWidth(sheetName, string(rune('A'+i)), string(rune('A'+i)), width)
+	}
+
+	// Закрепляем панели
+	f.SetPanes(sheetName, &excelize.Panes{
+		Freeze:      true,
+		XSplit:      1,
+		YSplit:      headerRow,
+		TopLeftCell: fmt.Sprintf("B%d", headerRow+1),
+		ActivePane:  "bottomRight",
+	})
+}

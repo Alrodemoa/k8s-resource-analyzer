@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -21,6 +24,7 @@ import (
 var (
 	clientset     *kubernetes.Clientset
 	metricsClient *metricsv.Clientset
+	dynamicClient dynamic.Interface
 )
 
 // initKubernetesClient - инициализация клиента Kubernetes
@@ -40,6 +44,13 @@ func initKubernetesClient() error {
 	metricsClient, err = metricsv.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("не удалось создать клиент метрик: %v", err)
+	}
+
+	// Создаём dynamic клиент для работы с CRD (Gatekeeper)
+	dynamicClient, err = dynamic.NewForConfig(config)
+	if err != nil {
+		// Не критично - dynamic клиент нужен только для Gatekeeper
+		dynamicClient = nil
 	}
 
 	return nil
@@ -338,4 +349,159 @@ func getPVsInfo() []*PVInfo {
 	}
 
 	return pvs
+}
+
+// getGatekeeperStatus - получение статуса OPA Gatekeeper
+func getGatekeeperStatus() *GatekeeperStatus {
+	status := &GatekeeperStatus{}
+	ctx := context.Background()
+
+	// Проверяем наличие namespace gatekeeper-system
+	_, err := clientset.CoreV1().Namespaces().Get(ctx, "gatekeeper-system", metav1.GetOptions{})
+	if err != nil {
+		return status
+	}
+	status.Installed = true
+
+	// Проверяем поды Gatekeeper
+	pods, err := clientset.CoreV1().Pods("gatekeeper-system").List(ctx, metav1.ListOptions{})
+	if err == nil {
+		for _, pod := range pods.Items {
+			if pod.Status.Phase == corev1.PodRunning {
+				status.PodCount++
+				status.Running = true
+			}
+		}
+	}
+
+	if dynamicClient == nil {
+		return status
+	}
+
+	// Получаем ConstraintTemplates
+	ctGVR := schema.GroupVersionResource{
+		Group:    "templates.gatekeeper.sh",
+		Version:  "v1",
+		Resource: "constrainttemplates",
+	}
+	ctList, err := dynamicClient.Resource(ctGVR).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		// Пробуем v1beta1
+		ctGVR.Version = "v1beta1"
+		ctList, err = dynamicClient.Resource(ctGVR).List(ctx, metav1.ListOptions{})
+	}
+	if err != nil {
+		return status
+	}
+
+	for _, ct := range ctList.Items {
+		tmplInfo := ConstraintTemplateInfo{Name: ct.GetName()}
+		if spec, ok := ct.Object["spec"].(map[string]interface{}); ok {
+			if crd, ok := spec["crd"].(map[string]interface{}); ok {
+				if crdSpec, ok := crd["spec"].(map[string]interface{}); ok {
+					if names, ok := crdSpec["names"].(map[string]interface{}); ok {
+						tmplInfo.Kind, _ = names["kind"].(string)
+					}
+				}
+			}
+		}
+		status.ConstraintTemplates = append(status.ConstraintTemplates, tmplInfo)
+
+		// Получаем экземпляры ограничений для этого Kind
+		if tmplInfo.Kind == "" {
+			continue
+		}
+		resource := strings.ToLower(tmplInfo.Kind) + "s"
+		constraintGVR := schema.GroupVersionResource{
+			Group:    "constraints.gatekeeper.sh",
+			Version:  "v1beta1",
+			Resource: resource,
+		}
+		cList, err := dynamicClient.Resource(constraintGVR).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			continue
+		}
+		for _, c := range cList.Items {
+			cInfo := ConstraintInfo{
+				Name: c.GetName(),
+				Kind: tmplInfo.Kind,
+			}
+			if spec, ok := c.Object["spec"].(map[string]interface{}); ok {
+				cInfo.EnforcementAction, _ = spec["enforcementAction"].(string)
+				if cInfo.EnforcementAction == "" {
+					cInfo.EnforcementAction = "deny"
+				}
+				if match, ok := spec["match"].(map[string]interface{}); ok {
+					if nsList, ok := match["namespaces"].([]interface{}); ok {
+						for _, ns := range nsList {
+							if nsStr, ok := ns.(string); ok {
+								cInfo.Namespaces = append(cInfo.Namespaces, nsStr)
+							}
+						}
+					}
+				}
+			}
+			if statusObj, ok := c.Object["status"].(map[string]interface{}); ok {
+				switch v := statusObj["totalViolations"].(type) {
+				case int64:
+					cInfo.TotalViolations = int(v)
+				case float64:
+					cInfo.TotalViolations = int(v)
+				}
+			}
+			status.Constraints = append(status.Constraints, cInfo)
+		}
+	}
+
+	return status
+}
+
+// getRBACEntries - получение списка привязок ролей (RBAC)
+func getRBACEntries() []*RBACEntry {
+	ctx := context.Background()
+	var entries []*RBACEntry
+
+	// ClusterRoleBindings — права на уровне кластера
+	crbs, err := clientset.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
+	if err == nil {
+		for _, crb := range crbs.Items {
+			for _, subject := range crb.Subjects {
+				entry := &RBACEntry{
+					Subject:     subject.Name,
+					SubjectKind: subject.Kind,
+					SubjectNS:   subject.Namespace,
+					Role:        crb.RoleRef.Name,
+					RoleKind:    crb.RoleRef.Kind,
+					BindingName: crb.Name,
+					BindingKind: "ClusterRoleBinding",
+					Scope:       "cluster",
+					BoundIn:     "",
+				}
+				entries = append(entries, entry)
+			}
+		}
+	}
+
+	// RoleBindings — права на уровне неймспейса
+	rbs, err := clientset.RbacV1().RoleBindings("").List(ctx, metav1.ListOptions{})
+	if err == nil {
+		for _, rb := range rbs.Items {
+			for _, subject := range rb.Subjects {
+				entry := &RBACEntry{
+					Subject:     subject.Name,
+					SubjectKind: subject.Kind,
+					SubjectNS:   subject.Namespace,
+					Role:        rb.RoleRef.Name,
+					RoleKind:    rb.RoleRef.Kind,
+					BindingName: rb.Name,
+					BindingKind: "RoleBinding",
+					Scope:       "namespace",
+					BoundIn:     rb.Namespace,
+				}
+				entries = append(entries, entry)
+			}
+		}
+	}
+
+	return entries
 }

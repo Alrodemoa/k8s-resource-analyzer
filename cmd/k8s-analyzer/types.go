@@ -32,6 +32,8 @@ type ClusterSummary struct {
 	ByNode                  map[string]*NodeInfo         // Информация по нодам
 	ByPVC                   map[string]*PVCInfo          // Информация по PVC
 	ByPV                    map[string]*PVInfo           // Информация по PV
+	Gatekeeper              *GatekeeperStatus            // Статус Gatekeeper
+	RBACEntries             []*RBACEntry                 // Список прав доступа
 }
 
 // NamespaceSummary - сводка по неймспейсу
@@ -103,4 +105,41 @@ type PVInfo struct {
 	Status       string  // Статус
 	Claim        string  // Привязанный PVC
 	StorageClass string  // Класс хранилища
+}
+
+// GatekeeperStatus - статус OPA Gatekeeper в кластере
+type GatekeeperStatus struct {
+	Installed           bool                    // Установлен ли Gatekeeper
+	Running             bool                    // Работает ли Gatekeeper
+	PodCount            int                     // Количество рабочих подов
+	ConstraintTemplates []ConstraintTemplateInfo // Шаблоны ограничений
+	Constraints         []ConstraintInfo         // Активные ограничения
+}
+
+// ConstraintTemplateInfo - информация о шаблоне ограничения Gatekeeper
+type ConstraintTemplateInfo struct {
+	Name string // Имя шаблона
+	Kind string // Kind ограничения
+}
+
+// ConstraintInfo - информация об ограничении Gatekeeper
+type ConstraintInfo struct {
+	Name              string   // Имя ограничения
+	Kind              string   // Тип ограничения
+	EnforcementAction string   // deny, warn, dryrun
+	TotalViolations   int      // Количество нарушений
+	Namespaces        []string // Целевые неймспейсы (пусто = все)
+}
+
+// RBACEntry - запись о правах доступа субъекта
+type RBACEntry struct {
+	Subject     string // Имя субъекта
+	SubjectKind string // User, ServiceAccount, Group
+	SubjectNS   string // Неймспейс субъекта (для ServiceAccount)
+	Role        string // Имя роли
+	RoleKind    string // Role, ClusterRole
+	BindingName string // Имя привязки роли
+	BindingKind string // RoleBinding, ClusterRoleBinding
+	Scope       string // cluster или namespace
+	BoundIn     string // Неймспейс привязки (для RoleBinding)
 }

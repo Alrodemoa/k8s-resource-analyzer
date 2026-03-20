@@ -90,6 +90,19 @@ func analyzeMemoryRecommendations(rec *strings.Builder, memEff, memReq, memAct, 
 	if memLim <= 0 && memReq > 0 {
 		rec.WriteString("💡 Рекомендуется установить limit для памяти\n")
 	}
+
+	// Предупреждение если лимит близок к фактическому использованию (риск OOMKill)
+	if memLim > 0 && memAct > 0 {
+		limitUsageRatio := (memAct / memLim) * 100.0
+		if limitUsageRatio >= 85.0 {
+			rec.WriteString(fmt.Sprintf("🚨 Лимит памяти почти исчерпан (%.0f%% от лимита) — риск OOMKill!\n",
+				limitUsageRatio))
+		}
+	}
+	// Предупреждение если лимит намного больше request
+	if memLim > 0 && memReq > 0 && memLim > memReq*5 {
+		rec.WriteString("⚠️ Лимит памяти в 5+ раз превышает request — возможна утечка памяти\n")
+	}
 }
 
 // analyzeCPURecommendations - анализ рекомендаций по CPU
@@ -110,6 +123,17 @@ func analyzeCPURecommendations(rec *strings.Builder, cpuEff, cpuReq, cpuAct, cpu
 			rec.WriteString("\n")
 		}
 		rec.WriteString("💡 Рекомендуется установить limit для CPU")
+	}
+
+	// Предупреждение если лимит CPU близок к фактическому использованию (риск throttling)
+	if cpuLim > 0 && cpuAct > 0 {
+		limitUsageRatio := (cpuAct / cpuLim) * 100.0
+		if limitUsageRatio >= 85.0 {
+			if rec.Len() > 0 {
+				rec.WriteString("\n")
+			}
+			rec.WriteString(fmt.Sprintf("🚨 CPU throttling: используется %.0f%% от лимита CPU!", limitUsageRatio))
+		}
 	}
 }
 
