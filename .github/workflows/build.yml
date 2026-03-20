@@ -91,6 +91,14 @@ jobs:
         with:
           go-version: '1.26'
 
+      - name: Очистить существующие файлы из релиза (защита от повторного запуска)
+        run: |
+          gh release view "${{ github.ref_name }}" --json assets \
+            --jq '.assets[].name' 2>/dev/null | \
+            xargs -r -I {} gh release delete-asset "${{ github.ref_name }}" {} --yes 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Запуск GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
