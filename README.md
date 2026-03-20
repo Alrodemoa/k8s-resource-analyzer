@@ -34,7 +34,7 @@
 | **Текущий момент** | *(без флагов)* | Снимок из Metrics Server |
 | **Живой сбор** | `-d 30m` | Непрерывный опрос Metrics Server за период, min/avg/max/p95 |
 | **Prometheus** | `-p http://…:9090 -d 1h` | Исторические данные из Prometheus или Thanos |
-| **Thanos (multi-cluster)** | `-p … -d … --cluster prod-eu` | Фильтрация по кластеру; автоопределение по kubectl-контексту |
+| **Thanos (multi-cluster)** | `-p … -d … --cluster prod-eu` | Фильтрация по кластеру; автоопределение по kubectl-контексту (если имя контекста совпадает с именем кластера в Thanos) |
 
 ### Анализ и рекомендации
 
@@ -112,8 +112,11 @@
   -b, --buffer <число>          Процент запаса ресурсов (по умолчанию 50)
   -p, --prometheus <url>        URL Prometheus/Thanos
   -d, --duration <период>       Период: 30m · 2h · 7d · 1w · 2w3d
-      --cluster <имя>           Имя кластера в Thanos (авто если не указано)
-      --cluster-label <лейбл>   Лейбл кластера в Thanos (авто, обычно 'cluster')
+      --cluster <имя>           Имя кластера в Thanos — если автоопределение не сработало
+                                (автоопределение: имя kubectl-контекста сопоставляется со
+                                значениями лейбла cluster в Thanos)
+      --cluster-label <лейбл>   Лейбл кластера в Thanos, если не 'cluster'
+                                (например: region, env, dc)
   -v, --version                 Показать версию
   -h, --help                    Справка
 ```
