@@ -222,10 +222,13 @@ jobs:
             --pattern "k8s-analyzer-darwin-amd64.tar.gz" \
             --pattern "k8s-analyzer-darwin-arm64.tar.gz" \
             --dir /tmp/mac
-          cd /tmp/mac
-          tar -xzf k8s-analyzer-darwin-amd64.tar.gz
-          tar -xzf k8s-analyzer-darwin-arm64.tar.gz
-          chmod +x k8s-analyzer-darwin-amd64 k8s-analyzer-darwin-arm64
+          # Внутри архива GoReleaser бинарник называется просто k8s-analyzer
+          mkdir -p /tmp/mac/amd64 /tmp/mac/arm64
+          tar -xzf /tmp/mac/k8s-analyzer-darwin-amd64.tar.gz -C /tmp/mac/amd64
+          tar -xzf /tmp/mac/k8s-analyzer-darwin-arm64.tar.gz -C /tmp/mac/arm64
+          cp /tmp/mac/amd64/k8s-analyzer /tmp/mac/k8s-analyzer-darwin-amd64
+          cp /tmp/mac/arm64/k8s-analyzer /tmp/mac/k8s-analyzer-darwin-arm64
+          chmod +x /tmp/mac/k8s-analyzer-darwin-amd64 /tmp/mac/k8s-analyzer-darwin-arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
