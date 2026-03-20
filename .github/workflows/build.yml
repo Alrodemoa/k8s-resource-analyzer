@@ -1,13 +1,16 @@
 name: Build and Release
 
 on:
-  # Запуск при создании тега или пуше в main/master
-  push:
-    tags:
-      - 'v*'
+  # Запуск при открытии или обновлении Pull Request
+  pull_request:
     branches:
       - main
       - master
+
+  # Запуск при создании тега релиза
+  push:
+    tags:
+      - 'v*'
 
   # Запуск вручную из интерфейса GitHub
   workflow_dispatch:
