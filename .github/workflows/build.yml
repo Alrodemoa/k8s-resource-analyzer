@@ -185,7 +185,9 @@ jobs:
           go-msi make \
             --msi ../dist/k8s-analyzer-windows-amd64.msi \
             --version "${{ env.VERSION }}" \
-            --wixfile wix.json
+            --path wix.json \
+            --license LICENSE \
+            --arch amd64
 
       - name: Загрузка MSI в релиз
         if: startsWith(github.ref, 'refs/tags/')
