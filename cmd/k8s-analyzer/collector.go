@@ -50,6 +50,22 @@ func collectClusterData() *ClusterSummary {
 	// Рассчитываем утилизацию нод
 	calculateNodeUtilization(cluster)
 
+	// Собираем данные о Gatekeeper
+	printStep("🔒 Анализ политик Gatekeeper...")
+	cluster.Gatekeeper = getGatekeeperStatus()
+	if cluster.Gatekeeper.Installed {
+		printStep(fmt.Sprintf("✅ Gatekeeper обнаружен: %d шаблонов, %d ограничений",
+			len(cluster.Gatekeeper.ConstraintTemplates),
+			len(cluster.Gatekeeper.Constraints)))
+	} else {
+		printStep("ℹ️  Gatekeeper не установлен")
+	}
+
+	// Собираем данные о правах доступа (RBAC)
+	printStep("👥 Сбор информации о правах доступа (RBAC)...")
+	cluster.RBACEntries = getRBACEntries()
+	printStep(fmt.Sprintf("✅ Найдено привязок ролей: %d", len(cluster.RBACEntries)))
+
 	printStep("✅ Сбор данных завершен")
 	
 	return cluster
