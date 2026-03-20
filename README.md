@@ -1,21 +1,19 @@
-<div align="center">
+# K8s Resource Analyzer
 
 ```
-  ██╗  ██╗  █████╗   ██████╗    Анализатор ресурсов
-  ██║ ██╔╝ ██╔══██╗ ██╔════╝   ─────────────────────────────────────────
-  █████╔╝  ╚█████╔╝ ╚█████╗    v1.1.1  ·  Kubernetes Кластер
-  ██╔═██╗  ██╔══██╗  ╚════██╗  Анализ и оптимизация ресурсов
-  ██║  ██╗ ╚█████╔╝  ██████╔╝  кластера с Excel отчётом
+  ██╗  ██╗  █████╗   ██████╗    Анализатор ресурсов Kubernetes
+  ██║ ██╔╝ ██╔══██╗ ██╔════╝   ──────────────────────────────────────────
+  █████╔╝  ╚█████╔╝ ╚█████╗    v1.1.1  ·  Анализ и оптимизация ресурсов
+  ██╔═██╗  ██╔══██╗  ╚════██╗  кластера с Excel отчётом
+  ██║  ██╗ ╚█████╔╝  ██████╔╝
   ╚═╝  ╚═╝  ╚════╝   ╚═════╝
 ```
 
 **Анализатор ресурсов Kubernetes — от текущего момента до глубокой истории**
 
 [![Go](https://img.shields.io/badge/Go-1.19+-00ADD8?style=flat-square&logo=go)](https://golang.org)
-[![Release](https://img.shields.io/github/v/release/your-org/k8s-resource-analyzer?style=flat-square)](../../releases)
-[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-
-</div>
+[![Release](https://img.shields.io/github/v/release/Alrodemoa/k8s-resource-analyzer?style=flat-square)](https://github.com/Alrodemoa/k8s-resource-analyzer/releases)
+[![License](https://img.shields.io/badge/license-GPL%20v3-blue?style=flat-square)](https://github.com/Alrodemoa/k8s-resource-analyzer/blob/main/LICENSE)
 
 ---
 
@@ -157,4 +155,4 @@ make run          # go run без сборки
 
 ## Лицензия
 
-[MIT](LICENSE)
+[GPL v3](https://github.com/Alrodemoa/k8s-resource-analyzer/blob/main/LICENSE) — использование свободное, производные работы должны оставаться открытыми под той же лицензией.
