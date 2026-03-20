@@ -1,6 +1,6 @@
 module github.com/your-org/k8s-resource-analyzer
 
-go 1.19
+go 1.26.1
 
 require (
 	github.com/xuri/excelize/v2 v2.8.1

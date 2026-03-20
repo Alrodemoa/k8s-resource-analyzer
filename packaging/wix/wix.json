@@ -1,0 +1,16 @@
+{
+  "product": "K8s Resource Analyzer",
+  "company": "Alrodemoa",
+  "version": "{{.Version}}",
+  "license": "{{.License}}",
+  "upgrade-code": "7b5ef2c4-3a8d-4f9e-b6d1-2a9c5e7f8b3d",
+  "files": {
+    "guid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "items": [
+      "k8s-analyzer.exe"
+    ]
+  },
+  "directories": [],
+  "env-variables": [],
+  "choco": {}
+}

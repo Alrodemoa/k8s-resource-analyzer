@@ -1,0 +1,74 @@
+version: 2
+
+project_name: k8s-analyzer
+
+# ─── Хуки перед сборкой ──────────────────────────────────────────────────────
+before:
+  hooks:
+    - go mod tidy
+
+# ─── Сборка бинарников ───────────────────────────────────────────────────────
+builds:
+  - id: k8s-analyzer
+    main: ./cmd/k8s-analyzer
+    binary: k8s-analyzer
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X main.AppVersion={{ .Version }}
+    flags:
+      - -buildvcs=false
+
+# ─── Архивы ──────────────────────────────────────────────────────────────────
+archives:
+  - id: default
+    name_template: "k8s-analyzer-{{ .Os }}-{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+# ─── DEB и RPM пакеты ────────────────────────────────────────────────────────
+nfpms:
+  - package_name: k8s-analyzer
+    vendor: Alrodemoa
+    homepage: https://github.com/Alrodemoa/k8s-resource-analyzer
+    maintainer: Alrodemoa
+    description: |-
+      Анализатор ресурсов Kubernetes.
+      Анализ CPU/Memory подов с рекомендациями по оптимизации и Excel-отчётом.
+    license: GPL-3.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/local/bin
+
+# ─── Контрольные суммы ───────────────────────────────────────────────────────
+checksum:
+  name_template: "SHA256SUMS.txt"
+  algorithm: sha256
+
+# ─── GitHub Release ──────────────────────────────────────────────────────────
+release:
+  github:
+    owner: Alrodemoa
+    name: k8s-resource-analyzer
+  # append — заметки, написанные в GitHub UI при создании релиза, сохраняются
+  mode: append
+  header: ""
+  footer: ""
+
+# Changelog отключён — используются заметки из GitHub UI
+changelog:
+  disable: true

@@ -11,7 +11,7 @@
 
 **Анализатор ресурсов Kubernetes — от текущего момента до глубокой истории**
 
-[![Go](https://img.shields.io/badge/Go-1.19+-00ADD8?style=flat-square&logo=go)](https://golang.org)
+[![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat-square&logo=go)](https://golang.org)
 [![Release](https://img.shields.io/github/v/release/Alrodemoa/k8s-resource-analyzer?style=flat-square)](https://github.com/Alrodemoa/k8s-resource-analyzer/releases)
 [![License](https://img.shields.io/badge/license-GPL%20v3-blue?style=flat-square)](https://github.com/Alrodemoa/k8s-resource-analyzer/blob/main/LICENSE)
 

@@ -25,8 +25,9 @@ const (
 	SafetyMarginNormal        = 1.2 // +20% для нормально загруженных подов
 )
 
-// Версия приложения
-const AppVersion = "1.1.1"
+// Версия приложения — перезаписывается GoReleaser через -ldflags "-X main.AppVersion=..."
+// При сборке без GoReleaser (go build вручную) остаётся "dev"
+var AppVersion = "dev"
 
 // Глобальная переменная для процента запаса
 var bufferPercent int
