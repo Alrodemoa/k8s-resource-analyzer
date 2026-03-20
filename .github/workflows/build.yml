@@ -146,11 +146,15 @@ jobs:
             ghcr.io/${{ github.repository }}:latest
 
   # ─── MSI пакет Windows ───────────────────────────────────────────────────
-  # Запускается после goreleaser — загружает MSI в уже созданный релиз
+  # На PR: только сборка (проверка). На теге: сборка + загрузка в релиз.
+  # always() позволяет запускаться даже когда goreleaser пропущен (PR).
   build-msi:
     name: Windows MSI
-    needs: goreleaser
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [test, goreleaser]
+    if: |
+      always() &&
+      needs.test.result == 'success' &&
+      (needs.goreleaser.result == 'success' || needs.goreleaser.result == 'skipped')
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -191,17 +195,21 @@ jobs:
             --path .
 
       - name: Загрузка MSI в релиз
+        if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         run: gh release upload "${{ github.ref_name }}" dist/k8s-analyzer-windows-amd64.msi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ─── macOS .pkg ──────────────────────────────────────────────────────────
-  # Запускается после goreleaser — загружает .pkg в уже созданный релиз
+  # На PR: только сборка (проверка). На теге: сборка + загрузка в релиз.
   build-macos-pkg:
     name: macOS .pkg
-    needs: goreleaser
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [test, goreleaser]
+    if: |
+      always() &&
+      needs.test.result == 'success' &&
+      (needs.goreleaser.result == 'success' || needs.goreleaser.result == 'skipped')
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -249,6 +257,7 @@ jobs:
             dist/k8s-analyzer-darwin-arm64.pkg
 
       - name: Загрузка .pkg в релиз
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
           gh release upload "${{ github.ref_name }}" \
             dist/k8s-analyzer-darwin-amd64.pkg \
