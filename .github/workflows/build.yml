@@ -53,7 +53,7 @@ jobs:
       - name: GoReleaser snapshot (все платформы, без публикации)
         uses: goreleaser/goreleaser-action@v5
         with:
-          version: latest
+          version: '~> v2'
           args: release --snapshot --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -80,7 +80,7 @@ jobs:
       - name: Запуск GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
-          version: latest
+          version: '~> v2'
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

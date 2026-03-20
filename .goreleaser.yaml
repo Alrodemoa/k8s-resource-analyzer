@@ -26,6 +26,7 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
+      - -X main.AppVersion={{ .Version }}
     flags:
       - -buildvcs=false
 
