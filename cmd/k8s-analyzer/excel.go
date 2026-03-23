@@ -630,7 +630,7 @@ func createEnhancedPVSheet(f *excelize.File, cluster *ClusterSummary,
 // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ СБОРА ДАННЫХ
 // ============================================================================
 
-// interactiveNamespaceSelect - интерактивный выбор неймспейсов
+// collectAllPodsForReport - сбор данных о подах для отчёта
 func collectAllPodsForReport(cluster *ClusterSummary) map[string]map[string]*PodResource {
 	allPods := make(map[string]map[string]*PodResource)
 	

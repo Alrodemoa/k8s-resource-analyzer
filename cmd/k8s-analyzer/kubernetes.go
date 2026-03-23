@@ -406,16 +406,22 @@ func getGatekeeperStatus() *GatekeeperStatus {
 			}
 		}
 		status.ConstraintTemplates = append(status.ConstraintTemplates, tmplInfo)
+	}
 
-		// Получаем экземпляры ограничений для этого Kind
-		if tmplInfo.Kind == "" {
-			continue
+	// Получаем все ресурсы группы constraints.gatekeeper.sh через Discovery API —
+	// это надёжнее чем угадывать имя ресурса из Kind (pluralization может быть нестандартной)
+	constraintResList, err := clientset.Discovery().ServerResourcesForGroupVersion("constraints.gatekeeper.sh/v1beta1")
+	if err != nil {
+		return status
+	}
+	for _, res := range constraintResList.APIResources {
+		if strings.Contains(res.Name, "/") {
+			continue // пропускаем субресурсы
 		}
-		resource := strings.ToLower(tmplInfo.Kind) + "s"
 		constraintGVR := schema.GroupVersionResource{
 			Group:    "constraints.gatekeeper.sh",
 			Version:  "v1beta1",
-			Resource: resource,
+			Resource: res.Name,
 		}
 		cList, err := dynamicClient.Resource(constraintGVR).List(ctx, metav1.ListOptions{})
 		if err != nil {
@@ -424,7 +430,7 @@ func getGatekeeperStatus() *GatekeeperStatus {
 		for _, c := range cList.Items {
 			cInfo := ConstraintInfo{
 				Name: c.GetName(),
-				Kind: tmplInfo.Kind,
+				Kind: c.GetKind(),
 			}
 			if spec, ok := c.Object["spec"].(map[string]interface{}); ok {
 				cInfo.EnforcementAction, _ = spec["enforcementAction"].(string)

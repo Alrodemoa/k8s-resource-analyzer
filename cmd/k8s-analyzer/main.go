@@ -31,6 +31,7 @@ var (
 	thanosCluster      string // Имя кластера в Thanos (лейбл cluster=)
 	thanosClusterLabel string // Название лейбла кластера в Thanos (по умолчанию "cluster")
 	prometheusMode     bool   // true когда работаем через Prometheus — не опрашиваем Metrics Server
+	insecureSkipTLS    bool   // true — не проверять TLS-сертификат (аналог -k в curl/kubectl)
 )
 
 // parseDuration разбирает строку периода с поддержкой суффиксов d (дни) и w (недели),
@@ -134,6 +135,8 @@ func parseFlags() {
 	flag.StringVar(&collectDuration, "d", "", "Период анализа (сокращенно)")
 	flag.StringVar(&thanosCluster, "cluster", "", "Имя кластера в Thanos (автоопределение если не указано)")
 	flag.StringVar(&thanosClusterLabel, "cluster-label", "", "Лейбл кластера в Thanos (автоопределение если не указано, обычно 'cluster')")
+	flag.BoolVar(&insecureSkipTLS, "insecure", false, "Не проверять TLS-сертификат (как -k в curl)")
+	flag.BoolVar(&insecureSkipTLS, "k", false, "Не проверять TLS-сертификат (сокращенно)")
 	flag.Parse()
 
 	bufferPercent = buffer
@@ -159,10 +162,15 @@ func validateEnvironment() bool {
 		printError("💡 Проверьте:")
 		printError("   • Переменная KUBECONFIG указывает на правильный файл")
 		printError("   • Файл ~/.kube/config существует и корректен")
-		printError("   • У вас есть доступ к кластеру")
+		printError("   • У вас есть доступ к кластеру (kubectl get nodes)")
 		return false
 	}
 
-	printStep("✅ Подключение установлено")
+	// Выводим текущий контекст
+	if ctx := getCurrentKubeContext(); ctx != "" {
+		printStep(fmt.Sprintf("✅ Кластер: %s", ctx))
+	} else {
+		printStep("✅ Подключение к кластеру установлено")
+	}
 	return true
 }

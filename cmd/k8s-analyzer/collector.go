@@ -13,21 +13,11 @@ var podHistories map[string]*PodHistory
 func collectClusterData() *ClusterSummary {
 	printStep("📊 Анализ Kubernetes кластера...")
 
-	// Получаем список всех неймспейсов
-	allNamespaces := getAllNamespaces()
-	if len(allNamespaces) == 0 {
+	selectedNamespaces := getAllNamespaces()
+	if len(selectedNamespaces) == 0 {
 		printError("❌ Не удалось получить список неймспейсов")
 		return &ClusterSummary{}
 	}
-
-	// Выбираем неймспейсы для анализа
-	selectedNamespaces := selectNamespaces(allNamespaces)
-	if len(selectedNamespaces) == 0 {
-		printError("❌ Не выбраны неймспейсы для анализа")
-		return &ClusterSummary{}
-	}
-
-	printStep(fmt.Sprintf("✅ Выбрано неймспейсов: %d", len(selectedNamespaces)))
 
 	// Собираем информацию о нодах
 	printStep("🖥️  Сбор информации о нодах...")

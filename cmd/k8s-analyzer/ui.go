@@ -86,6 +86,7 @@ func printHelp() {
 	fmt.Println(ansiGreen + "    -d, --duration <период>" + ansiReset + "                 Период анализа " + ansiGray + "(например: 30m, 2h, 7d, 1w)" + ansiReset)
 	fmt.Println(ansiGreen + "    --cluster <имя>" + ansiReset + "                         Имя кластера в Thanos " + ansiGray + "(автоопределение если не указано)" + ansiReset)
 	fmt.Println(ansiGreen + "    --cluster-label <лейбл>" + ansiReset + "                Лейбл кластера в Thanos " + ansiGray + "(автоопределение, обычно 'cluster')" + ansiReset)
+	fmt.Println(ansiGreen + "  -k, --insecure" + ansiReset + "                            Не проверять TLS-сертификат " + ansiGray + "(как -k в curl/kubectl)" + ansiReset)
 	fmt.Println(ansiGreen + "    -v, --version" + ansiReset + "                           Показать версию программы")
 	fmt.Println(ansiGreen + "    -h, --help" + ansiReset + "                              Показать эту справку")
 	fmt.Println()
@@ -203,45 +204,3 @@ func printFinalSummary(cluster *ClusterSummary, startTime time.Time, filename st
 	fmt.Println()
 }
 
-// selectNamespaces - интерактивный выбор неймспейсов
-func selectNamespaces(allNamespaces []string) []string {
-	sep := ansiCyan + strings.Repeat("═", ConsoleWidth) + ansiReset
-
-	fmt.Println("\n" + sep)
-	fmt.Println(centerText(ansiWhite+ansiBold+"  ВЫБОР НЕЙМСПЕЙСОВ  "+ansiReset, ConsoleWidth+len(ansiWhite+ansiBold+ansiReset)))
-	fmt.Println(sep)
-	fmt.Println()
-
-	for i, ns := range allNamespaces {
-		fmt.Printf(ansiGray+"  %2d."+ansiReset+"  "+ansiWhite+"%-40s"+ansiReset+"\n", i+1, ns)
-	}
-
-	fmt.Println()
-	fmt.Println(ansiYellow + "  Форматы выбора:" + ansiReset)
-	fmt.Println(ansiGray + "    1,3,5" + ansiReset + "  — через запятую")
-	fmt.Println(ansiGray + "    1-10 " + ansiReset + "  — диапазон")
-	fmt.Println(ansiGray + "    *    " + ansiReset + "  — все неймспейсы")
-	fmt.Print(ansiCyan + "\n  Ваш выбор: " + ansiReset)
-
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	input = strings.TrimSpace(input)
-
-	if input == "*" {
-		return allNamespaces
-	}
-
-	indices := parseSelection(input, len(allNamespaces))
-	if len(indices) == 0 {
-		return []string{}
-	}
-
-	var selected []string
-	for _, idx := range indices {
-		if idx >= 1 && idx <= len(allNamespaces) {
-			selected = append(selected, allNamespaces[idx-1])
-		}
-	}
-
-	return selected
-}

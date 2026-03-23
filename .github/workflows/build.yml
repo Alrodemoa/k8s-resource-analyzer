@@ -184,8 +184,9 @@ jobs:
       - name: Сборка MSI
         shell: bash
         run: |
-          # Всё на C:\ — go-msi не умеет строить relative path между разными дисками
-          WORK="$RUNNER_TEMP/msi-work"
+          # go-msi не может строить relative path между разными дисками (D:\ workspace vs C:\ temp)
+          # Используем C:/msi-work — гарантированно на том же диске что и go-msi temp
+          WORK="/c/msi-work"
           mkdir -p "$WORK"
           cp /tmp/win/k8s-analyzer.exe "$WORK/k8s-analyzer.exe"
           cp packaging/wix/wix.json   "$WORK/wix.json"
@@ -200,7 +201,7 @@ jobs:
 
       - name: Загрузка MSI в релиз
         shell: bash
-        run: gh release upload "${{ github.ref_name }}" "$RUNNER_TEMP/msi-work/k8s-analyzer-windows-amd64.msi"
+        run: gh release upload "${{ github.ref_name }}" "/c/msi-work/k8s-analyzer-windows-amd64.msi"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

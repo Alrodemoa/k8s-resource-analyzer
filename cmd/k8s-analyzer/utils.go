@@ -93,44 +93,6 @@ func centerText(text string, width int) string {
 	return strings.Repeat(" ", padding) + text
 }
 
-// parseSelection - парсинг выбора неймспейсов пользователем
-func parseSelection(input string, maxIndex int) []int {
-	var indices []int
-	seen := make(map[int]bool)
-
-	// Проверяем на диапазон (например: 1-5)
-	if strings.Contains(input, "-") {
-		parts := strings.Split(input, "-")
-		if len(parts) == 2 {
-			start, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
-			end, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
-			if err1 == nil && err2 == nil && start > 0 && end <= maxIndex && start <= end {
-				for i := start; i <= end; i++ {
-					if !seen[i] {
-						seen[i] = true
-						indices = append(indices, i)
-					}
-				}
-			}
-		}
-	} else {
-		// Разбираем числа через запятую
-		parts := strings.FieldsFunc(input, func(r rune) bool {
-			return r == ',' || r == ' '
-		})
-		for _, part := range parts {
-			num, err := strconv.Atoi(strings.TrimSpace(part))
-			if err == nil && num > 0 && num <= maxIndex {
-				if !seen[num] {
-					seen[num] = true
-					indices = append(indices, num)
-				}
-			}
-		}
-	}
-
-	return indices
-}
 
 // parsePodResourceFromJSON - парсинг ресурсов пода из JSON
 func parsePodResourceFromJSON(item interface{}, namespace string) *PodResource {

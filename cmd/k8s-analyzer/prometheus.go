@@ -7,6 +7,7 @@ package main
 //   - Живой сбор: опрос Metrics Server каждые N секунд в течение заданного времени
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,18 +47,58 @@ type prometheusMetric struct {
 // HTTP-клиент Prometheus
 // ============================================================================
 
-// checkPrometheusConnection - проверка доступности Prometheus/Thanos
+// newHTTPClient - создаёт HTTP-клиент с учётом флага --insecure/-k
+func newHTTPClient(timeout time.Duration) *http.Client {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: insecureSkipTLS, //nolint:gosec
+		},
+	}
+	return &http.Client{Timeout: timeout, Transport: transport}
+}
+
+// checkPrometheusConnection - проверка доступности Prometheus/Thanos с детальным выводом ошибок.
+// Возвращает true если сервер отвечает, иначе печатает конкретную причину.
 func checkPrometheusConnection(promURL string) bool {
-	client := &http.Client{Timeout: 5 * time.Second}
-	// Пробуем /-/healthy (Prometheus) и /api/v1/labels (Thanos)
-	for _, path := range []string{"/-/healthy", "/api/v1/labels"} {
-		resp, err := client.Get(strings.TrimRight(promURL, "/") + path)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode < 400 {
-				return true
+	client := newHTTPClient(5 * time.Second)
+	base := strings.TrimRight(promURL, "/")
+
+	// Пробуем /-/healthy (Prometheus) затем /api/v1/labels (Thanos)
+	endpoints := []string{"/-/healthy", "/api/v1/labels"}
+	var lastErr error
+	var lastStatus int
+
+	for _, path := range endpoints {
+		fullURL := base + path
+		printStep(fmt.Sprintf("   → проверяю %s", fullURL))
+		resp, err := client.Get(fullURL)
+		if err != nil {
+			lastErr = err
+			// Различаем TLS-ошибку от сетевой
+			if strings.Contains(err.Error(), "certificate") ||
+				strings.Contains(err.Error(), "tls") ||
+				strings.Contains(err.Error(), "x509") {
+				printError(fmt.Sprintf("   ❌ Ошибка TLS-сертификата: %v", err))
+				printError("   💡 Попробуйте запустить с флагом -k для пропуска проверки сертификата")
+			} else if strings.Contains(err.Error(), "connection refused") {
+				printError(fmt.Sprintf("   ❌ Соединение отклонено — сервер не запущен или неверный порт: %s", promURL))
+			} else if strings.Contains(err.Error(), "no such host") ||
+				strings.Contains(err.Error(), "dial") {
+				printError(fmt.Sprintf("   ❌ Хост недоступен — проверьте DNS и сетевую доступность: %s", promURL))
+			} else {
+				printError(fmt.Sprintf("   ❌ Ошибка сети: %v", err))
 			}
+			continue
 		}
+		resp.Body.Close()
+		if resp.StatusCode < 400 {
+			return true
+		}
+		lastStatus = resp.StatusCode
+	}
+
+	if lastErr == nil && lastStatus > 0 {
+		printError(fmt.Sprintf("   ❌ Сервер вернул HTTP %d — проверьте URL и права доступа", lastStatus))
 	}
 	return false
 }
@@ -71,7 +112,7 @@ type labelValuesResponse struct {
 // getThanosLabelValues - получение всех значений лейбла из Thanos
 func getThanosLabelValues(promURL, labelName string) ([]string, error) {
 	apiURL := fmt.Sprintf("%s/api/v1/label/%s/values", strings.TrimRight(promURL, "/"), labelName)
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := newHTTPClient(10 * time.Second)
 
 	resp, err := client.Get(apiURL)
 	if err != nil {
@@ -175,10 +216,14 @@ func queryPrometheusRange(promURL, query string, start, end time.Time, step time
 	params.Set("end", strconv.FormatInt(end.Unix(), 10))
 	params.Set("step", fmt.Sprintf("%.0f", step.Seconds()))
 
-	client := &http.Client{Timeout: 60 * time.Second}
+	client := newHTTPClient(60 * time.Second)
 	resp, err := client.Get(apiURL + "?" + params.Encode())
 	if err != nil {
-		return nil, fmt.Errorf("не удалось подключиться к Prometheus: %v", err)
+		msg := fmt.Sprintf("не удалось подключиться к Prometheus (%s): %v", apiURL, err)
+		if strings.Contains(err.Error(), "certificate") || strings.Contains(err.Error(), "x509") {
+			msg += " — используйте -k для пропуска TLS-проверки"
+		}
+		return nil, fmt.Errorf("%s", msg)
 	}
 	defer resp.Body.Close()
 
