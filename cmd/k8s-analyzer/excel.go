@@ -1,8 +1,5 @@
 package main
 
-// Модуль генерации Excel отчётов
-// Все функции для создания детальных Excel файлов с анализом кластера
-
 import (
 	"fmt"
 	"os"
@@ -28,51 +25,37 @@ func getStyleByEfficiency(styles map[string]int, eff float64) int {
 	}
 }
 
-// ============================================================================
-// ГЕНЕРАЦИЯ EXCEL ОТЧЁТА
-// ============================================================================
-
-// generateExcelReport - генерация Excel отчета
+// generateExcelReport - генерация Excel отчёта кластера.
 func generateExcelReport(cluster *ClusterSummary) string {
 	printStep("📁 Создаем Excel отчет...")
 
 	f := excelize.NewFile()
 	defer f.Close()
 
-	// Создаем стили
 	styles := createEnhancedStyles(f)
 
-	// Создаем листы (первый созданный лист станет активным)
 	createEnhancedClusterSummarySheetWithCharts(f, cluster, styles)
 	createEnhancedNodesSheet(f, cluster, styles)
 	createEnhancedPVCSheet(f, cluster, styles)
 	createEnhancedPVSheet(f, cluster, styles)
-	
-	// Создаём листы неймспейсов с полными данными по подам
-	// Нужно собрать данные по подам заново
+
 	allPods := collectAllPodsForReport(cluster)
 	createEnhancedNamespaceSheetsWithPods(f, cluster, allPods, styles)
 
-	// Создаём лист Gatekeeper
 	createGatekeeperSheet(f, cluster, styles)
-
-	// Создаём лист RBAC
 	createRBACSheet(f, cluster, styles)
 
-	// Создаём лист исторических метрик (только если данные были собраны)
 	if len(podHistories) > 0 {
 		createHistorySheet(f, podHistories, styles)
 	}
 
-	// Удаляем дефолтный лист Sheet1 (он создаётся автоматически)
+	// Sheet1 создаётся автоматически excelize — удаляем его
 	if index, err := f.GetSheetIndex("Sheet1"); err == nil && index >= 0 {
 		f.DeleteSheet("Sheet1")
 	}
 
-	// Устанавливаем первый лист активным
 	f.SetActiveSheet(0)
 
-	// Сохраняем файл
 	filename := fmt.Sprintf("k8s-анализ-%s.xlsx",
 		time.Now().Format("2006-01-02-150405"))
 	if err := f.SaveAs(filename); err != nil {
@@ -84,11 +67,9 @@ func generateExcelReport(cluster *ClusterSummary) string {
 	return filename
 }
 
-// createEnhancedStyles - создание улучшенных стилей для Excel с приятной цветовой гаммой
 func createEnhancedStyles(f *excelize.File) map[string]int {
 	styles := make(map[string]int)
 
-	// Заголовок главный (крупный, элегантный тёмно-фиолетовый)
 	mainHeader, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold:   true,
@@ -98,7 +79,7 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"#5B4A8F"}, // Элегантный фиолетовый
+			Color:   []string{"#5B4A8F"},
 			Pattern: 1,
 		},
 		Alignment: &excelize.Alignment{
@@ -115,7 +96,6 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 	})
 	styles["mainHeader"] = mainHeader
 
-	// Заголовок таблицы (средний, приятный индиго)
 	tableHeader, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold:   true,
@@ -125,7 +105,7 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"#6B5B95"}, // Мягкий индиго
+			Color:   []string{"#6B5B95"},
 			Pattern: 1,
 		},
 		Alignment: &excelize.Alignment{
@@ -142,7 +122,6 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 	})
 	styles["tableHeader"] = tableHeader
 
-	// Критический (мягкий коралловый красный)
 	critical, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold:   true,
@@ -151,7 +130,7 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"#E74C3C"}, // Мягкий коралловый красный
+			Color:   []string{"#E74C3C"},
 			Pattern: 1,
 		},
 		Alignment: &excelize.Alignment{
@@ -168,7 +147,6 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 	})
 	styles["critical"] = critical
 
-	// Высокий (тёплый янтарный)
 	high, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold:   true,
@@ -177,7 +155,7 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"#F39C12"}, // Янтарный оранжевый
+			Color:   []string{"#F39C12"},
 			Pattern: 1,
 		},
 		Alignment: &excelize.Alignment{
@@ -194,7 +172,6 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 	})
 	styles["high"] = high
 
-	// Норма (свежий мятный зелёный)
 	normal, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold:   true,
@@ -203,7 +180,7 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"#27AE60"}, // Свежий зелёный
+			Color:   []string{"#27AE60"},
 			Pattern: 1,
 		},
 		Alignment: &excelize.Alignment{
@@ -220,7 +197,6 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 	})
 	styles["normal"] = normal
 
-	// Низкий (мягкий золотистый)
 	low, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold:   true,
@@ -229,7 +205,7 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"#F4D03F"}, // Мягкий золотой
+			Color:   []string{"#F4D03F"},
 			Pattern: 1,
 		},
 		Alignment: &excelize.Alignment{
@@ -246,7 +222,6 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 	})
 	styles["low"] = low
 
-	// Данные (чистый белый фон с переносом строк)
 	data, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Size:   12,
@@ -271,7 +246,6 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 	})
 	styles["data"] = data
 
-	// Числа
 	number, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Size:   12,
@@ -296,7 +270,6 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 	})
 	styles["number"] = number
 
-	// Хороший показатель (нежный мятный)
 	good, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold:   true,
@@ -305,7 +278,7 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"#D5F4E6"}, // Нежный мятный
+			Color:   []string{"#D5F4E6"},
 			Pattern: 1,
 		},
 		Alignment: &excelize.Alignment{
@@ -322,7 +295,6 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 	})
 	styles["good"] = good
 
-	// Предупреждение (персиковый)
 	warning, _ := f.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold:   true,
@@ -331,7 +303,7 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 		},
 		Fill: excelize.Fill{
 			Type:    "pattern",
-			Color:   []string{"#FCE4C8"}, // Нежный персиковый
+			Color:   []string{"#FCE4C8"},
 			Pattern: 1,
 		},
 		Alignment: &excelize.Alignment{
@@ -352,20 +324,17 @@ func createEnhancedStyles(f *excelize.File) map[string]int {
 }
 
 
-// Вспомогательные функции для форматирования Excel
 func createEnhancedNodesSheet(f *excelize.File, cluster *ClusterSummary,
 	styles map[string]int) {
 
 	sheetName := "🖥️ Ноды"
 	f.NewSheet(sheetName)
 
-	// Заголовок
 	f.SetCellValue(sheetName, "A1", "🖥️ АНАЛИЗ ЗАГРУЗКИ НОД КЛАСТЕРА")
 	f.SetCellStyle(sheetName, "A1", "M1", styles["mainHeader"])
 	f.MergeCell(sheetName, "A1", "M1")
 	f.SetRowHeight(sheetName, 1, 30)
 
-	// Заголовки колонок
 	headers := []string{
 		"Нода", "Поды",
 		"CPU\nЕмкость", "CPU\nЗапросы", "CPU\nФакт", "CPU Зап\n%", "CPU Факт\n%",
@@ -382,7 +351,6 @@ func createEnhancedNodesSheet(f *excelize.File, cluster *ClusterSummary,
 	f.SetRowHeight(sheetName, row, 40)
 	row++
 
-	// Данные нод
 	var nodes []*NodeInfo
 	for _, node := range cluster.ByNode {
 		nodes = append(nodes, node)
@@ -402,7 +370,6 @@ func createEnhancedNodesSheet(f *excelize.File, cluster *ClusterSummary,
 		f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+1, row),
 			fmt.Sprintf("%c%d", col+1, row), styles["number"])
 
-		// CPU метрики
 		f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+2, row),
 			fmt.Sprintf("%.0fm", node.CPUCapacity))
 		f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+3, row),
@@ -422,7 +389,6 @@ func createEnhancedNodesSheet(f *excelize.File, cluster *ClusterSummary,
 			fmt.Sprintf("%c%d", col+6, row),
 			getStyleByEfficiency(styles, node.CPUUtilization))
 
-		// Memory метрики
 		f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+7, row),
 			formatMemoryValue(node.MemoryCapacity))
 		f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+8, row),
@@ -442,7 +408,6 @@ func createEnhancedNodesSheet(f *excelize.File, cluster *ClusterSummary,
 			fmt.Sprintf("%c%d", col+11, row),
 			getStyleByEfficiency(styles, node.MemoryUtilization))
 
-		// Рекомендации
 		f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+12, row), node.Recommendation)
 		f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+12, row),
 			fmt.Sprintf("%c%d", col+12, row), styles["data"])
@@ -450,18 +415,15 @@ func createEnhancedNodesSheet(f *excelize.File, cluster *ClusterSummary,
 		row++
 	}
 
-	// Ширина колонок
 	colWidths := []float64{30, 10, 15, 15, 15, 12, 12, 18, 18, 18, 12, 12, 50}
 	for i, width := range colWidths {
 		colName := string(rune('A' + i))
 		f.SetColWidth(sheetName, colName, colName, width)
 	}
 
-	// Автофильтр
 	lastCol := string(rune('A' + len(headers) - 1))
 	f.AutoFilter(sheetName, fmt.Sprintf("A3:%s3", lastCol), nil)
 
-	// Закрепляем панели
 	f.SetPanes(sheetName, &excelize.Panes{
 		Freeze:      true,
 		XSplit:      1,
@@ -497,7 +459,6 @@ func createEnhancedPVCSheet(f *excelize.File, cluster *ClusterSummary,
 	f.SetRowHeight(sheetName, row, 25)
 	row++
 
-	// Сортируем PVC
 	var pvcList []*PVCInfo
 	for _, pvc := range cluster.ByPVC {
 		pvcList = append(pvcList, pvc)
@@ -521,7 +482,6 @@ func createEnhancedPVCSheet(f *excelize.File, cluster *ClusterSummary,
 		f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+7, row),
 			strings.Join(pvc.AccessModes, ", "))
 
-		// Стиль для статуса
 		statusStyle := styles["good"]
 		if pvc.Status != "Bound" {
 			statusStyle = styles["warning"]
@@ -532,17 +492,14 @@ func createEnhancedPVCSheet(f *excelize.File, cluster *ClusterSummary,
 		row++
 	}
 
-	// Ширина колонок
 	colWidths := []float64{25, 35, 15, 35, 15, 15, 25, 30}
 	for i, width := range colWidths {
 		colName := string(rune('A' + i))
 		f.SetColWidth(sheetName, colName, colName, width)
 	}
 
-	// Автофильтр
 	f.AutoFilter(sheetName, "A3:H3", nil)
 
-	// Закрепляем панели
 	f.SetPanes(sheetName, &excelize.Panes{
 		Freeze:      true,
 		XSplit:      0,
@@ -577,7 +534,6 @@ func createEnhancedPVSheet(f *excelize.File, cluster *ClusterSummary,
 	f.SetRowHeight(sheetName, row, 25)
 	row++
 
-	// Сортируем PV
 	var pvList []*PVInfo
 	for _, pv := range cluster.ByPV {
 		pvList = append(pvList, pv)
@@ -594,7 +550,6 @@ func createEnhancedPVSheet(f *excelize.File, cluster *ClusterSummary,
 		f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+3, row), pv.Claim)
 		f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+4, row), pv.StorageClass)
 
-		// Стиль для статуса
 		statusStyle := styles["good"]
 		if pv.Status != "Bound" {
 			statusStyle = styles["warning"]
@@ -605,17 +560,14 @@ func createEnhancedPVSheet(f *excelize.File, cluster *ClusterSummary,
 		row++
 	}
 
-	// Ширина колонок
 	colWidths := []float64{40, 15, 15, 45, 25}
 	for i, width := range colWidths {
 		colName := string(rune('A' + i))
 		f.SetColWidth(sheetName, colName, colName, width)
 	}
 
-	// Автофильтр
 	f.AutoFilter(sheetName, "A3:E3", nil)
 
-	// Закрепляем панели
 	f.SetPanes(sheetName, &excelize.Panes{
 		Freeze:      true,
 		XSplit:      0,
@@ -626,17 +578,10 @@ func createEnhancedPVSheet(f *excelize.File, cluster *ClusterSummary,
 }
 
 
-// ============================================================================
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ СБОРА ДАННЫХ
-// ============================================================================
-
-// interactiveNamespaceSelect - интерактивный выбор неймспейсов
 func collectAllPodsForReport(cluster *ClusterSummary) map[string]map[string]*PodResource {
 	allPods := make(map[string]map[string]*PodResource)
-	
-	// Собираем поды по каждому неймспейсу из кластера
+
 	for ns := range cluster.ByNamespace {
-		// Получаем запросы и лимиты ресурсов
 		pods := getPodResources(ns)
 		if len(pods) > 0 {
 			if allPods[ns] == nil {
@@ -646,8 +591,6 @@ func collectAllPodsForReport(cluster *ClusterSummary) map[string]map[string]*Pod
 				allPods[ns][pod.Name] = pod
 			}
 		}
-		
-		// Получаем фактическое использование ресурсов
 		actualData := getPodActualUsage(ns)
 		for podName, usage := range actualData {
 			if pod, exists := allPods[ns][podName]; exists {
@@ -660,13 +603,12 @@ func collectAllPodsForReport(cluster *ClusterSummary) map[string]map[string]*Pod
 	return allPods
 }
 
-// createEnhancedNamespaceSheetsWithPods - создание детальных листов неймспейсов с подами
+// createEnhancedNamespaceSheetsWithPods - создание детальных листов неймспейсов с подами.
 func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSummary,
 	allPods map[string]map[string]*PodResource, styles map[string]int) {
-	
+
 	printStep("   Создаем детальные листы неймспейсов...")
-	
-	// Сортируем неймспейсы для удобства
+
 	var namespaces []string
 	for ns := range cluster.ByNamespace {
 		namespaces = append(namespaces, ns)
@@ -685,8 +627,7 @@ func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSum
 		}
 		
 		f.NewSheet(sheetName)
-		
-		// ===== ШАПКА НЕЙМСПЕЙСА =====
+
 		title := fmt.Sprintf("📊 НЕЙМСПЕЙС: %s", ns)
 		f.SetCellValue(sheetName, "A1", title)
 		f.SetCellStyle(sheetName, "A1", "N1", styles["mainHeader"])
@@ -694,11 +635,9 @@ func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSum
 		f.SetRowHeight(sheetName, 1, 35)
 		
 		row := 3
-		
-		// ===== ДЕТАЛЬНАЯ СТАТИСТИКА НЕЙМСПЕЙСА =====
+
 		row = addSectionHeader(f, sheetName, row, "📊 СТАТИСТИКА НЕЙМСПЕЙСА", styles)
-		
-		// Первая строка статистики
+
 		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Всего подов:")
 		f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), summary.PodCount)
 		f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
@@ -716,8 +655,7 @@ func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSum
 		f.SetCellStyle(sheetName, fmt.Sprintf("G%d", row), fmt.Sprintf("G%d", row), styles["good"])
 		f.SetCellStyle(sheetName, fmt.Sprintf("H%d", row), fmt.Sprintf("H%d", row), styles["data"])
 		row++
-		
-		// Вторая строка статистики
+
 		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), "CPU Фактически:")
 		f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), 
 			fmt.Sprintf("%.0fm (%.2f ядер)", summary.CPUActualTotal,
@@ -730,8 +668,7 @@ func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSum
 		f.SetCellStyle(sheetName, fmt.Sprintf("G%d", row), fmt.Sprintf("G%d", row), styles["warning"])
 		f.SetCellStyle(sheetName, fmt.Sprintf("H%d", row), fmt.Sprintf("H%d", row), styles["data"])
 		row++
-		
-		// Третья строка статистики
+
 		f.SetCellValue(sheetName, fmt.Sprintf("D%d", row), 
 			fmt.Sprintf("CPU Рекомендуется (+%d%%):", bufferPercent))
 		f.SetCellValue(sheetName, fmt.Sprintf("E%d", row), 
@@ -753,11 +690,9 @@ func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSum
 			(summary.MemActualTotal/summary.MemRequestTotal)*100)
 		f.SetCellStyle(sheetName, fmt.Sprintf("H%d", row), fmt.Sprintf("H%d", row), memEffStyle)
 		row += 2
-		
-		// ===== ТАБЛИЦА С ПОДАМИ =====
+
 		row = addSectionHeader(f, sheetName, row, "📦 ДЕТАЛЬНАЯ ИНФОРМАЦИЯ ПО ПОДАМ", styles)
-		
-		// Заголовки таблицы
+
 		headers := []string{
 			"Имя пода", "Нода", "PVC",
 			"CPU\nЗапрос", "CPU\nФакт", "CPU\nЛимит", "CPU\nЭфф %",
@@ -772,8 +707,7 @@ func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSum
 		}
 		f.SetRowHeight(sheetName, row, 35)
 		row++
-		
-		// Данные подов
+
 		pods := allPods[ns]
 		var podList []*PodResource
 		for _, pod := range pods {
@@ -788,93 +722,77 @@ func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSum
 			cpuEff := calculateCPUEfficiency(pod)
 			recommendation := generatePodRecommendation(pod, memEff, cpuEff)
 			status := getStatus(memEff)
-			
+
 			col := 'A'
-			
-			// Имя пода
+
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col, row), pod.Name)
-			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col, row), 
+			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col, row),
 				fmt.Sprintf("%c%d", col, row), styles["data"])
-			
-			// Нода
+
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+1, row), pod.NodeName)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+1, row),
 				fmt.Sprintf("%c%d", col+1, row), styles["data"])
-			
-			// PVC
-			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+2, row), 
+
+			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+2, row),
 				strings.Join(pod.PVCs, ", "))
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+2, row),
 				fmt.Sprintf("%c%d", col+2, row), styles["data"])
-			
-			// CPU — запрос
+
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+3, row), pod.CPURequest)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+3, row),
 				fmt.Sprintf("%c%d", col+3, row), styles["number"])
 
-			// CPU — факт
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+4, row), pod.CPUActual)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+4, row),
 				fmt.Sprintf("%c%d", col+4, row), styles["number"])
 
-			// CPU — лимит
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+5, row), pod.CPULimit)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+5, row),
 				fmt.Sprintf("%c%d", col+5, row), styles["number"])
-			
-			// CPU Эффективность
-			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+6, row), 
+
+			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+6, row),
 				fmt.Sprintf("%.1f%%", cpuEff))
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+6, row),
 				fmt.Sprintf("%c%d", col+6, row), getStyleByEfficiency(styles, cpuEff))
-			
-			// Память — запрос
+
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+7, row), pod.MemoryRequest)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+7, row),
 				fmt.Sprintf("%c%d", col+7, row), styles["number"])
 
-			// Память — факт
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+8, row), pod.MemoryActual)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+8, row),
 				fmt.Sprintf("%c%d", col+8, row), styles["number"])
 
-			// Память — лимит
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+9, row), pod.MemoryLimit)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+9, row),
 				fmt.Sprintf("%c%d", col+9, row), styles["number"])
 
-			// Память — эффективность
-			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+10, row), 
+			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+10, row),
 				fmt.Sprintf("%.1f%%", memEff))
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+10, row),
 				fmt.Sprintf("%c%d", col+10, row), getStyleByEfficiency(styles, memEff))
-			
-			// Рекомендации
+
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+11, row), recommendation)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+11, row),
 				fmt.Sprintf("%c%d", col+11, row), styles["data"])
-			
-			// Статус
+
 			f.SetCellValue(sheetName, fmt.Sprintf("%c%d", col+12, row), status)
 			f.SetCellStyle(sheetName, fmt.Sprintf("%c%d", col+12, row),
 				fmt.Sprintf("%c%d", col+12, row), getStyleByEfficiency(styles, memEff))
-			
+
 			row++
 		}
-		
-		// Ширина колонок
+
 		colWidths := []float64{40, 25, 30, 15, 15, 15, 12, 18, 18, 18, 12, 80, 18}
 		for i, width := range colWidths {
 			colName := string(rune('A' + i))
 			f.SetColWidth(sheetName, colName, colName, width)
 		}
-		
-		// Автофильтр
+
 		lastCol := string(rune('A' + len(headers) - 1))
 		headerRow := row - len(podList) - 1
 		f.AutoFilter(sheetName, fmt.Sprintf("A%d:%s%d", headerRow, lastCol, headerRow), nil)
-		
-		// Закрепляем панели
+
 		f.SetPanes(sheetName, &excelize.Panes{
 			Freeze:      true,
 			XSplit:      1,
@@ -885,13 +803,11 @@ func createEnhancedNamespaceSheetsWithPods(f *excelize.File, cluster *ClusterSum
 	}
 }
 
-// addChartToSheet - добавление графика на лист
 func addChartToSheet(f *excelize.File, sheetName string,
 	chartType excelize.ChartType, title string,
 	categories string, values string, 
 	position string) error {
 	
-	// Создаём график
 	if err := f.AddChart(sheetName, position, &excelize.Chart{
 		Type: chartType,
 		Series: []excelize.ChartSeries{
@@ -943,7 +859,7 @@ func addChartToSheet(f *excelize.File, sheetName string,
 	return nil
 }
 
-// createEnhancedClusterSummarySheetWithCharts - создание расширенного листа сводки с графиками
+// createEnhancedClusterSummarySheetWithCharts - создание листа сводки кластера.
 func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *ClusterSummary,
 	styles map[string]int) {
 
@@ -951,7 +867,6 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 	index, _ := f.NewSheet(sheetName)
 	f.SetActiveSheet(index)
 
-	// Заголовок
 	title := fmt.Sprintf("📊 АНАЛИЗ РЕСУРСОВ KUBERNETES КЛАСТЕРА (запас %d%%)", bufferPercent)
 	f.SetCellValue(sheetName, "A1", title)
 	f.SetCellStyle(sheetName, "A1", "F1", styles["mainHeader"])
@@ -960,10 +875,8 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 
 	row := 3
 
-	// ===== СЕКЦИЯ 1: ОБЩАЯ СТАТИСТИКА =====
 	row = addSectionHeader(f, sheetName, row, "📦 ОБЩАЯ СТАТИСТИКА КЛАСТЕРА", styles)
-	
-	// Строка 1
+
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Всего подов:")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), cluster.TotalPods)
 	f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), "Всего нод:")
@@ -971,8 +884,7 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
 	f.SetCellStyle(sheetName, fmt.Sprintf("C%d", row), fmt.Sprintf("C%d", row), styles["good"])
 	row++
-	
-	// Строка 2
+
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Всего неймспейсов:")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), len(cluster.ByNamespace))
 	f.SetCellValue(sheetName, fmt.Sprintf("C%d", row), "Всего PVC:")
@@ -980,16 +892,14 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
 	f.SetCellStyle(sheetName, fmt.Sprintf("C%d", row), fmt.Sprintf("C%d", row), styles["good"])
 	row++
-	
-	// Строка 3
+
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Всего PV:")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), cluster.TotalPVs)
 	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
 	row += 2
 
-	// ===== СЕКЦИЯ 2: МАКСИМАЛЬНЫЕ ПОКАЗАТЕЛИ =====
 	row = addSectionHeader(f, sheetName, row, "🔥 МАКСИМАЛЬНЫЕ ПОКАЗАТЕЛИ ПОДОВ", styles)
-	
+
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Макс. CPU (факт):")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row),
 		fmt.Sprintf("%.0fm (%.2f ядер)", cluster.MaxPodCPUActual,
@@ -999,7 +909,7 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["warning"])
 	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("C%d", row), styles["data"])
 	row++
-	
+
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Макс. память (факт):")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row),
 		formatMemoryValue(cluster.MaxPodMemoryActual))
@@ -1008,7 +918,7 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["warning"])
 	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("C%d", row), styles["data"])
 	row++
-	
+
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Макс. CPU (request):")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row),
 		fmt.Sprintf("%.0fm (%.2f ядер)", cluster.MaxPodCPURequest,
@@ -1016,7 +926,7 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
 	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
 	row++
-	
+
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Макс. память (request):")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row),
 		formatMemoryValue(cluster.MaxPodMemoryRequest))
@@ -1024,9 +934,8 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
 	row += 2
 
-	// ===== СЕКЦИЯ 3: ПРОЦЕССОР (CPU) =====
 	row = addSectionHeader(f, sheetName, row, "⚙️  ПРОЦЕССОР (CPU)", styles)
-	
+
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Емкость кластера:")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row),
 		fmt.Sprintf("%.0fm (%.1f ядер)", cluster.TotalNodeCPUCapacity,
@@ -1034,15 +943,14 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
 	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
 	row++
-	
+
 	row = addMetricRow(f, sheetName, row, "Запрошено (requests):",
 		cluster.TotalCPURequest, cluster.TotalNodeCPUCapacity, true, styles)
 	row = addMetricRow(f, sheetName, row, "Фактически (actual):",
 		cluster.TotalCPUActual, cluster.TotalNodeCPUCapacity, true, styles)
 	row = addMetricRow(f, sheetName, row, fmt.Sprintf("Оптимально (+%d%%):", bufferPercent),
 		cluster.TotalCPUOptimized, cluster.TotalNodeCPUCapacity, true, styles)
-	
-	// Добавляем экономию/дефицит
+
 	cpuDiff := cluster.TotalCPURequest - cluster.TotalCPUOptimized
 	if cpuDiff > 0 {
 		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "💰 Можно сэкономить:")
@@ -1059,24 +967,22 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 	}
 	row += 2
 
-	// ===== СЕКЦИЯ 4: ПАМЯТЬ (MEMORY) =====
 	row = addSectionHeader(f, sheetName, row, "💾 ПАМЯТЬ (MEMORY)", styles)
-	
+
 	f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "Емкость кластера:")
 	f.SetCellValue(sheetName, fmt.Sprintf("B%d", row),
 		formatMemoryValue(cluster.TotalNodeMemoryCapacity))
 	f.SetCellStyle(sheetName, fmt.Sprintf("A%d", row), fmt.Sprintf("A%d", row), styles["good"])
 	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
 	row++
-	
+
 	row = addMetricRow(f, sheetName, row, "Запрошено (requests):",
 		cluster.TotalMemRequest, cluster.TotalNodeMemoryCapacity, false, styles)
 	row = addMetricRow(f, sheetName, row, "Фактически (actual):",
 		cluster.TotalMemActual, cluster.TotalNodeMemoryCapacity, false, styles)
 	row = addMetricRow(f, sheetName, row, fmt.Sprintf("Оптимально (+%d%%):", bufferPercent),
 		cluster.TotalMemOptimized, cluster.TotalNodeMemoryCapacity, false, styles)
-	
-	// Добавляем экономию/дефицит
+
 	memDiff := cluster.TotalMemRequest - cluster.TotalMemOptimized
 	if memDiff > 0 {
 		f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), "💰 Можно сэкономить:")
@@ -1091,17 +997,15 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 	}
 	row += 2
 
-	// ===== СЕКЦИЯ 5: ЭФФЕКТИВНОСТЬ =====
 	row = addSectionHeader(f, sheetName, row, "📊 ЭФФЕКТИВНОСТЬ ИСПОЛЬЗОВАНИЯ", styles)
-	
+
 	cpuEff := (cluster.TotalCPUActual / cluster.TotalCPURequest) * 100
 	memEff := (cluster.TotalMemActual / cluster.TotalMemRequest) * 100
-	
+
 	row = addEfficiencyRow(f, sheetName, row, "CPU эффективность:", cpuEff, styles)
 	row = addEfficiencyRow(f, sheetName, row, "Память эффективность:", memEff, styles)
 	row += 2
-	
-	// ===== СЕКЦИЯ 6: ХРАНИЛИЩА =====
+
 	row = addSectionHeader(f, sheetName, row, "💽 ХРАНИЛИЩА (STORAGE)", styles)
 	
 	pvcPercent := 0.0
@@ -1135,12 +1039,10 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row),
 		getStyleByEfficiency(styles, pvPercent))
 
-	// Ширина колонок
 	f.SetColWidth(sheetName, "A", "A", 35)
 	f.SetColWidth(sheetName, "B", "B", 50)
 	f.SetColWidth(sheetName, "C", "F", 25)
 
-	// Закрепляем панели
 	f.SetPanes(sheetName, &excelize.Panes{
 		Freeze:      true,
 		XSplit:      0,
@@ -1148,15 +1050,10 @@ func createEnhancedClusterSummarySheetWithCharts(f *excelize.File, cluster *Clus
 		TopLeftCell: "A3",
 		ActivePane:  "bottomLeft",
 	})
-	
-	// Примечание: Графики будут добавляться в отдельных листах для лучшей визуализации
-	// так как в сводке уже много данных
 }
 
-// boolPtr - вспомогательная функция для создания указателя на bool
 func boolPtr(b bool) *bool { return &b }
 
-// addSectionHeader - добавляет заголовок секции на лист
 func addSectionHeader(f *excelize.File, sheetName string, row int, title string, styles map[string]int) int {
 	cell := fmt.Sprintf("A%d", row)
 	endCell := fmt.Sprintf("F%d", row)
@@ -1167,7 +1064,6 @@ func addSectionHeader(f *excelize.File, sheetName string, row int, title string,
 	return row + 1
 }
 
-// getStatus - возвращает текстовый статус по значению эффективности
 func getStatus(eff float64) string {
 	switch {
 	case eff > EfficiencyCritical:
@@ -1183,7 +1079,6 @@ func getStatus(eff float64) string {
 	}
 }
 
-// addMetricRow - добавляет строку с метрикой и процентом от общего
 func addMetricRow(f *excelize.File, sheetName string, row int, label string,
 	value float64, total float64, isCPU bool, styles map[string]int) int {
 
@@ -1209,7 +1104,6 @@ func addMetricRow(f *excelize.File, sheetName string, row int, label string,
 	return row + 1
 }
 
-// addEfficiencyRow - добавляет строку с процентом эффективности
 func addEfficiencyRow(f *excelize.File, sheetName string, row int, label string,
 	eff float64, styles map[string]int) int {
 
@@ -1221,9 +1115,7 @@ func addEfficiencyRow(f *excelize.File, sheetName string, row int, label string,
 	return row + 1
 }
 
-// sanitizeSheetName - очистка имени листа Excel (реализация в utils.go)
-
-// createGatekeeperSheet - создание листа с анализом Gatekeeper
+// createGatekeeperSheet - создание листа с анализом Gatekeeper.
 func createGatekeeperSheet(f *excelize.File, cluster *ClusterSummary, styles map[string]int) {
 	sheetName := "🔒 Gatekeeper"
 	f.NewSheet(sheetName)
@@ -1236,7 +1128,6 @@ func createGatekeeperSheet(f *excelize.File, cluster *ClusterSummary, styles map
 	row := 3
 	gk := cluster.Gatekeeper
 
-	// Статус установки
 	row = addSectionHeader(f, sheetName, row, "📋 СТАТУС GATEKEEPER", styles)
 
 	statusText := "Не установлен"
@@ -1282,7 +1173,6 @@ func createGatekeeperSheet(f *excelize.File, cluster *ClusterSummary, styles map
 	f.SetCellStyle(sheetName, fmt.Sprintf("B%d", row), fmt.Sprintf("B%d", row), styles["data"])
 	row += 2
 
-	// Таблица шаблонов ограничений
 	if len(gk.ConstraintTemplates) > 0 {
 		row = addSectionHeader(f, sheetName, row, "📄 ШАБЛОНЫ ОГРАНИЧЕНИЙ (ConstraintTemplates)", styles)
 
@@ -1305,7 +1195,6 @@ func createGatekeeperSheet(f *excelize.File, cluster *ClusterSummary, styles map
 		row++
 	}
 
-	// Таблица ограничений
 	if len(gk.Constraints) > 0 {
 		row = addSectionHeader(f, sheetName, row, "⚙️  АКТИВНЫЕ ОГРАНИЧЕНИЯ (Constraints)", styles)
 
@@ -1353,7 +1242,6 @@ func createGatekeeperSheet(f *excelize.File, cluster *ClusterSummary, styles map
 		f.AutoFilter(sheetName, fmt.Sprintf("A%d:E%d", row-len(gk.Constraints)-1, row-len(gk.Constraints)-1), nil)
 	}
 
-	// Ширина колонок
 	f.SetColWidth(sheetName, "A", "A", 40)
 	f.SetColWidth(sheetName, "B", "B", 30)
 	f.SetColWidth(sheetName, "C", "C", 15)
@@ -1369,18 +1257,16 @@ func createGatekeeperSheet(f *excelize.File, cluster *ClusterSummary, styles map
 	})
 }
 
-// createHistorySheet - создание листа с историческими метриками (min/avg/max/p95)
+// createHistorySheet - создание листа с историческими метриками (min/avg/max/p95).
 func createHistorySheet(f *excelize.File, histories map[string]*PodHistory, styles map[string]int) {
 	sheetName := "📈 История"
 	f.NewSheet(sheetName)
 
-	// Заголовок
 	f.SetCellValue(sheetName, "A1", "📈 ИСТОРИЧЕСКИЕ МЕТРИКИ ПОДОВ")
 	f.SetCellStyle(sheetName, "A1", "L1", styles["mainHeader"])
 	f.MergeCell(sheetName, "A1", "L1")
 	f.SetRowHeight(sheetName, 1, 35)
 
-	// Подзаголовок с режимом
 	modeLabel := "Живой сбор"
 	if prometheusURL != "" {
 		modeLabel = fmt.Sprintf("Prometheus: %s", prometheusURL)

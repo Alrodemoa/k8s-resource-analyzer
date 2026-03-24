@@ -1,13 +1,10 @@
 package main
 
-// Модуль анализа и расчётов эффективности ресурсов
-
 import (
 	"fmt"
 	"strings"
 )
 
-// calculateMemoryEfficiency - расчёт эффективности использования памяти
 func calculateMemoryEfficiency(pod *PodResource) float64 {
 	memReq := parseMemoryValue(pod.MemoryRequest)
 	memAct := parseMemoryValue(pod.MemoryActual)
@@ -19,7 +16,6 @@ func calculateMemoryEfficiency(pod *PodResource) float64 {
 	return (memAct / memReq) * 100.0
 }
 
-// calculateCPUEfficiency - расчёт эффективности использования CPU
 func calculateCPUEfficiency(pod *PodResource) float64 {
 	cpuReq := parseCPUValue(pod.CPURequest)
 	cpuAct := parseCPUValue(pod.CPUActual)
@@ -31,7 +27,6 @@ func calculateCPUEfficiency(pod *PodResource) float64 {
 	return (cpuAct / cpuReq) * 100.0
 }
 
-// determinePodStatus - определение статуса пода по эффективности
 func determinePodStatus(memEff, cpuEff float64) string {
 	maxEff := memEff
 	if cpuEff > maxEff {
@@ -67,7 +62,6 @@ func generatePodRecommendation(pod *PodResource, memEff, cpuEff float64) string 
 
 	bufferMul := 1.0 + float64(bufferPercent)/100.0
 
-	// ── Сводная строка CPU ─────────────────────────────────────────────────────
 	if cpuAct > 0 {
 		recLim := cpuAct * bufferMul
 		cpuLine := fmt.Sprintf("CPU  | факт: %s | рек. limit (факт+%d%%): %s",
@@ -87,7 +81,6 @@ func generatePodRecommendation(pod *PodResource, memEff, cpuEff float64) string 
 		rec.WriteString(cpuLine + "\n")
 	}
 
-	// ── Сводная строка Memory ──────────────────────────────────────────────────
 	if memAct > 0 {
 		recLim := memAct * bufferMul
 		memLine := fmt.Sprintf("MEM  | факт: %s | рек. limit (факт+%d%%): %s",
@@ -107,7 +100,6 @@ func generatePodRecommendation(pod *PodResource, memEff, cpuEff float64) string 
 		rec.WriteString(memLine + "\n")
 	}
 
-	// ── Детальные предупреждения ───────────────────────────────────────────────
 	analyzeMemoryRecommendations(&rec, memEff, memReq, memAct, memLim, pod.MemoryRequest)
 	analyzeCPURecommendations(&rec, cpuEff, cpuReq, cpuAct, cpuLim, pod.CPURequest)
 
@@ -127,20 +119,18 @@ func generatePodRecommendation(pod *PodResource, memEff, cpuEff float64) string 
 //  1. Оценка лимита (влияет на OOMKill)
 //  2. Оценка request (влияет на планировщик)
 func analyzeMemoryRecommendations(rec *strings.Builder, memEff, memReq, memAct, memLim float64, memReqStr string) {
-	bufferMul := 1.0 + float64(bufferPercent)/100.0 // например 1.30 при -b 30
+	bufferMul := 1.0 + float64(bufferPercent)/100.0
 	recommendedLim := memAct * bufferMul
-
-	// ── Анализ лимита (главное — OOMKill) ─────────────────────────────────────
 
 	if memLim <= 0 {
 		rec.WriteString("🔴 Memory limit не задан — под может занять всю свободную память ноды\n")
 	} else if memAct > 0 {
 		limitRatio := (memAct / memLim) * 100.0
-		targetRatio := (1.0 / bufferMul) * 100.0 // при буфере 30% = 76.9% — порог "близко к лимиту"
+		// при буфере 30% = 76.9% — порог "близко к лимиту"
+		targetRatio := (1.0 / bufferMul) * 100.0
 
 		switch {
 		case limitRatio >= 90.0:
-			// Критично: потребление вплотную к лимиту, OOMKill неизбежен
 			rec.WriteString(fmt.Sprintf(
 				"🚨 OOMKill риск: факт %s = %.0f%% от limit %s (буфер %d%% → нужен limit ≥ %s)\n",
 				formatMemoryValue(memAct), limitRatio, formatMemoryValue(memLim),
@@ -152,7 +142,6 @@ func analyzeMemoryRecommendations(rec *strings.Builder, memEff, memReq, memAct, 
 				bufferPercent, formatMemoryValue(memAct), limitRatio,
 				formatMemoryValue(memLim), formatMemoryValue(recommendedLim)))
 		case memLim > recommendedLim*1.5:
-			// Лимит завышен более чем в 1.5× от рекомендуемого с учётом буфера
 			savings := memLim - recommendedLim
 			rec.WriteString(fmt.Sprintf(
 				"💡 Limit памяти можно снизить: факт %s × буфер %d%% = %s (текущий %s, экономия %s)\n",
@@ -161,8 +150,6 @@ func analyzeMemoryRecommendations(rec *strings.Builder, memEff, memReq, memAct, 
 				formatMemoryValue(savings)))
 		}
 	}
-
-	// ── Анализ request (влияет на планировщик, не на OOMKill) ─────────────────
 
 	if memReq > 0 && memAct > 0 {
 		recommendedReq := memAct * bufferMul
@@ -180,7 +167,7 @@ func analyzeMemoryRecommendations(rec *strings.Builder, memEff, memReq, memAct, 
 		}
 	}
 
-	// Request не должен превышать limit
+	// Request не должен превышать limit — под никогда не запустится
 	if memLim > 0 && memReq > memLim {
 		rec.WriteString(fmt.Sprintf(
 			"🔴 Невалидная конфигурация: memory request (%s) > limit (%s) — под никогда не запустится\n",
@@ -205,8 +192,6 @@ func analyzeCPURecommendations(rec *strings.Builder, cpuEff, cpuReq, cpuAct, cpu
 			rec.WriteString("\n")
 		}
 	}
-
-	// ── Анализ лимита (throttling) ─────────────────────────────────────────────
 
 	if cpuLim <= 0 {
 		nl()
@@ -239,8 +224,6 @@ func analyzeCPURecommendations(rec *strings.Builder, cpuEff, cpuReq, cpuAct, cpu
 		}
 	}
 
-	// ── Анализ request ─────────────────────────────────────────────────────────
-
 	if cpuReq > 0 && cpuAct > 0 {
 		recommendedReq := cpuAct * bufferMul
 		switch {
@@ -259,7 +242,7 @@ func analyzeCPURecommendations(rec *strings.Builder, cpuEff, cpuReq, cpuAct, cpu
 		}
 	}
 
-	// Request не должен превышать limit
+	// Request не должен превышать limit — под никогда не запустится
 	if cpuLim > 0 && cpuReq > cpuLim {
 		nl()
 		rec.WriteString(fmt.Sprintf(
@@ -268,7 +251,6 @@ func analyzeCPURecommendations(rec *strings.Builder, cpuEff, cpuReq, cpuAct, cpu
 	}
 }
 
-// calculateRecommendedCPU - расчёт рекомендуемого значения CPU
 func calculateRecommendedCPU(pod *PodResource) string {
 	cpuReq := parseCPUValue(pod.CPURequest)
 	cpuAct := parseCPUValue(pod.CPUActual)
@@ -281,20 +263,16 @@ func calculateRecommendedCPU(pod *PodResource) string {
 
 	var recommended float64
 	if cpuEff >= EfficiencyHigh {
-		// Высокая эффективность - добавляем запас от actual
 		recommended = cpuAct * SafetyMarginNormal
 	} else if cpuEff < EfficiencyLow {
-		// Низкая эффективность - уменьшаем request
 		recommended = cpuAct * SafetyMarginUnderutilized
 	} else {
-		// Оптимальная эффективность - добавляем процент запаса
 		recommended = cpuReq * (1.0 + float64(bufferPercent)/100.0)
 	}
 
 	return formatCPUValue(recommended)
 }
 
-// calculateRecommendedMemory - расчёт рекомендуемого значения памяти
 func calculateRecommendedMemory(pod *PodResource) string {
 	memReq := parseMemoryValue(pod.MemoryRequest)
 	memAct := parseMemoryValue(pod.MemoryActual)
@@ -307,13 +285,10 @@ func calculateRecommendedMemory(pod *PodResource) string {
 
 	var recommended float64
 	if memEff >= EfficiencyHigh {
-		// Высокая эффективность - добавляем запас от actual
 		recommended = memAct * SafetyMarginNormal
 	} else if memEff < EfficiencyLow {
-		// Низкая эффективность - уменьшаем request
 		recommended = memAct * SafetyMarginUnderutilized
 	} else {
-		// Оптимальная эффективность - добавляем процент запаса
 		recommended = memReq * (1.0 + float64(bufferPercent)/100.0)
 	}
 

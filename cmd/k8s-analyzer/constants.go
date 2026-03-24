@@ -14,12 +14,10 @@ const (
 	MiBInGiB         = 1024.0 // Мебибайт в гибибайте
 )
 
-// Параметры консольного вывода
 const (
-	ConsoleWidth = 75 // Ширина консоли для вывода
+	ConsoleWidth = 75
 )
 
-// Рекомендуемые множители запаса ресурсов
 const (
 	SafetyMarginUnderutilized = 1.3 // +30% для недогруженных подов
 	SafetyMarginNormal        = 1.2 // +20% для нормально загруженных подов
@@ -29,5 +27,4 @@ const (
 // При сборке без GoReleaser (go build вручную) остаётся "dev"
 var AppVersion = "dev"
 
-// Глобальная переменная для процента запаса
 var bufferPercent int

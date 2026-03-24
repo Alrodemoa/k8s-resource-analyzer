@@ -7,14 +7,14 @@ import (
 	"strings"
 )
 
-// parseMemoryValue - парсинг значения памяти в MiB
+// parseMemoryValue - парсинг значения памяти в MiB.
+// Поддерживает суффиксы: Gi, Mi, Ki, G, m (миллибайты).
 func parseMemoryValue(val string) float64 {
 	val = strings.ToLower(strings.TrimSpace(val))
 	if val == "n/a" || val == "" || val == "<none>" || val == "н/д" {
 		return 0
 	}
 
-	// Парсим с разными суффиксами
 	if strings.Contains(val, "gi") {
 		num, _ := strconv.ParseFloat(strings.Replace(val, "gi", "", -1), 64)
 		return num * MiBInGiB
@@ -40,7 +40,6 @@ func parseMemoryValue(val string) float64 {
 	return num
 }
 
-// parseCPUValue - парсинг значения CPU в millicores
 func parseCPUValue(val string) float64 {
 	val = strings.ToLower(strings.TrimSpace(val))
 	if val == "n/a" || val == "" || val == "<none>" || val == "н/д" {
@@ -56,7 +55,6 @@ func parseCPUValue(val string) float64 {
 	return num * MillicoresInCore
 }
 
-// formatCPUValue - форматирование значения CPU для вывода
 func formatCPUValue(millicores float64) string {
 	if millicores <= 0 {
 		return "Н/Д"
@@ -64,7 +62,6 @@ func formatCPUValue(millicores float64) string {
 	return fmt.Sprintf("%.0fm", millicores)
 }
 
-// formatMemoryValue - форматирование значения памяти для вывода
 func formatMemoryValue(mib float64) string {
 	if mib <= 0 {
 		return "Н/Д"
@@ -75,7 +72,6 @@ func formatMemoryValue(mib float64) string {
 	return fmt.Sprintf("%.0fMi", mib)
 }
 
-// sanitizeSheetName - очистка имени листа Excel от недопустимых символов
 func sanitizeSheetName(name string) string {
 	if len(name) > 31 {
 		name = name[:31]
@@ -84,7 +80,6 @@ func sanitizeSheetName(name string) string {
 	return re.ReplaceAllString(name, "-")
 }
 
-// centerText - центрирование текста для консольного вывода
 func centerText(text string, width int) string {
 	if len(text) >= width {
 		return text
@@ -93,46 +88,7 @@ func centerText(text string, width int) string {
 	return strings.Repeat(" ", padding) + text
 }
 
-// parseSelection - парсинг выбора неймспейсов пользователем
-func parseSelection(input string, maxIndex int) []int {
-	var indices []int
-	seen := make(map[int]bool)
 
-	// Проверяем на диапазон (например: 1-5)
-	if strings.Contains(input, "-") {
-		parts := strings.Split(input, "-")
-		if len(parts) == 2 {
-			start, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
-			end, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
-			if err1 == nil && err2 == nil && start > 0 && end <= maxIndex && start <= end {
-				for i := start; i <= end; i++ {
-					if !seen[i] {
-						seen[i] = true
-						indices = append(indices, i)
-					}
-				}
-			}
-		}
-	} else {
-		// Разбираем числа через запятую
-		parts := strings.FieldsFunc(input, func(r rune) bool {
-			return r == ',' || r == ' '
-		})
-		for _, part := range parts {
-			num, err := strconv.Atoi(strings.TrimSpace(part))
-			if err == nil && num > 0 && num <= maxIndex {
-				if !seen[num] {
-					seen[num] = true
-					indices = append(indices, num)
-				}
-			}
-		}
-	}
-
-	return indices
-}
-
-// parsePodResourceFromJSON - парсинг ресурсов пода из JSON
 func parsePodResourceFromJSON(item interface{}, namespace string) *PodResource {
 	pod, ok := item.(map[string]interface{})
 	if !ok {
@@ -155,7 +111,6 @@ func parsePodResourceFromJSON(item interface{}, namespace string) *PodResource {
 		nodeName, _ = specNode.(string)
 	}
 
-	// Получаем привязанные PVC
 	var pvcs []string
 	if volumes, ok := spec["volumes"].([]interface{}); ok {
 		for _, v := range volumes {
@@ -175,7 +130,6 @@ func parsePodResourceFromJSON(item interface{}, namespace string) *PodResource {
 		}
 	}
 
-	// Парсим ресурсы контейнеров
 	containers, ok := spec["containers"].([]interface{})
 	if !ok || len(containers) == 0 {
 		return nil
@@ -222,7 +176,6 @@ func parsePodResourceFromJSON(item interface{}, namespace string) *PodResource {
 	}
 }
 
-// parsePVCFromJSON - парсинг PVC из JSON
 func parsePVCFromJSON(item interface{}) *PVCInfo {
 	pvcMap, ok := item.(map[string]interface{})
 	if !ok {
@@ -289,7 +242,6 @@ func parsePVCFromJSON(item interface{}) *PVCInfo {
 	}
 }
 
-// parsePVFromJSON - парсинг PV из JSON
 func parsePVFromJSON(item interface{}) *PVInfo {
 	pvMap, ok := item.(map[string]interface{})
 	if !ok {
