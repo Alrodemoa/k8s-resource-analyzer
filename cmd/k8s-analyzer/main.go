@@ -1,18 +1,3 @@
-// K8s Resource Analyzer
-//
-// Анализатор ресурсов Kubernetes кластера с Excel отчётностью
-//
-// МОДУЛИ ПРОЕКТА:
-// - main.go       - Точка входа программы
-// - constants.go  - Константы и глобальные переменные
-// - types.go      - Структуры данных
-// - kubernetes.go - Работа с kubectl API
-// - utils.go      - Утилиты (парсеры, форматтеры)
-// - collector.go  - Сбор данных из кластера
-// - analyzer.go   - Анализ и расчёты
-// - excel.go      - Генерация Excel отчёта
-// - ui.go         - Консольный интерфейс
-
 package main
 
 import (
@@ -52,7 +37,6 @@ func parseDuration(s string) (time.Duration, error) {
 	var total time.Duration
 	rest := s
 	for rest != "" {
-		// Читаем число
 		i := 0
 		for i < len(rest) && (rest[i] >= '0' && rest[i] <= '9') {
 			i++
@@ -66,7 +50,6 @@ func parseDuration(s string) (time.Duration, error) {
 		}
 		rest = rest[i:]
 
-		// Читаем суффикс
 		j := 0
 		for j < len(rest) && (rest[j] < '0' || rest[j] > '9') {
 			j++
@@ -96,28 +79,20 @@ func parseDuration(s string) (time.Duration, error) {
 }
 
 func main() {
-	// Парсим аргументы командной строки
 	parseFlags()
 
 	startTime := time.Now()
 	printBanner()
 
-	// Проверяем окружение
 	if !validateEnvironment() {
 		return
 	}
 
-	// Собираем данные кластера
 	clusterSummary := collectClusterData()
-
-	// Создаем Excel отчет
 	filename := generateExcelReport(clusterSummary)
-
-	// Выводим итоговую статистику
 	printFinalSummary(clusterSummary, startTime, filename)
 }
 
-// parseFlags - парсинг флагов командной строки
 func parseFlags() {
 	var help bool
 	var version bool
@@ -141,7 +116,6 @@ func parseFlags() {
 
 	bufferPercent = buffer
 
-	// Версия выводится первой и завершает программу
 	if version {
 		printVersion()
 		os.Exit(0)
@@ -153,7 +127,6 @@ func parseFlags() {
 	}
 }
 
-// validateEnvironment - проверка окружения и инициализация клиента
 func validateEnvironment() bool {
 	printStep("🔌 Подключение к Kubernetes API...")
 
@@ -166,7 +139,6 @@ func validateEnvironment() bool {
 		return false
 	}
 
-	// Выводим текущий контекст
 	if ctx := getCurrentKubeContext(); ctx != "" {
 		printStep(fmt.Sprintf("✅ Кластер: %s", ctx))
 	} else {

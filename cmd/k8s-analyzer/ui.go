@@ -1,7 +1,5 @@
 package main
 
-// Модуль консольного интерфейса
-
 import (
 	"bufio"
 	"fmt"
@@ -10,7 +8,6 @@ import (
 	"time"
 )
 
-// ANSI коды цветов и стилей
 const (
 	ansiReset  = "\033[0m"
 	ansiBold   = "\033[1m"
@@ -24,11 +21,9 @@ const (
 	ansiGray   = "\033[90m"
 )
 
-// printBanner - вывод баннера программы
 func printBanner() {
 	sep := ansiCyan + strings.Repeat("─", ConsoleWidth) + ansiReset
 
-	// ASCII-арт "K8s" + информация справа
 	logo := []string{
 		ansiYellow + ansiBold + `  ██╗  ██╗  █████╗   ██████╗  ` + ansiReset + `  ` + ansiWhite + ansiBold + `Анализатор ресурсов` + ansiReset,
 		ansiYellow + ansiBold + `  ██║ ██╔╝ ██╔══██╗ ██╔════╝  ` + ansiReset + `  ` + ansiGray + strings.Repeat("─", 40) + ansiReset,
@@ -52,7 +47,6 @@ func printBanner() {
 	fmt.Printf(ansiGray+"  🔧 Запас ресурсов: "+ansiReset+ansiWhite+"%d%%"+ansiReset+"\n",
 		bufferPercent)
 
-	// Режим работы
 	if prometheusURL != "" && collectDuration != "" {
 		fmt.Printf(ansiGray+"  📡 Режим:          "+ansiReset+ansiCyan+"Prometheus (%s, период: %s)"+ansiReset+"\n",
 			prometheusURL, collectDuration)
@@ -65,12 +59,10 @@ func printBanner() {
 	fmt.Println()
 }
 
-// printVersion - вывод версии программы
 func printVersion() {
 	fmt.Printf("k8s-analyzer v%s\n", AppVersion)
 }
 
-// printHelp - вывод справки
 func printHelp() {
 	sep := ansiCyan + strings.Repeat("─", ConsoleWidth) + ansiReset
 	fmt.Println()
@@ -112,17 +104,14 @@ func printHelp() {
 	fmt.Println()
 }
 
-// printStep - вывод шага выполнения
 func printStep(message string) {
 	fmt.Println(message)
 }
 
-// printError - вывод ошибки
 func printError(message string) {
 	fmt.Println(ansiRed + message + ansiReset)
 }
 
-// printSuccess - вывод успешного сообщения
 func printSuccess(message string) {
 	fmt.Println(ansiGreen + message + ansiReset)
 }
@@ -148,7 +137,6 @@ func printFinalSummary(cluster *ClusterSummary, startTime time.Time, filename st
 
 	bufMul := 1.0 + float64(bufferPercent)/100.0
 
-	// CPU
 	fmt.Println()
 	fmt.Println(ansiYellow + ansiBold + "  💻 CPU" + ansiReset)
 	fmt.Printf(ansiGray+"     Фактически:    "+ansiReset+ansiWhite+"%-12s"+ansiReset+"\n", formatCPUValue(cluster.TotalCPUActual))
@@ -157,7 +145,6 @@ func printFinalSummary(cluster *ClusterSummary, startTime time.Time, filename st
 		cpuLimRatio := (cluster.TotalCPUActual / cluster.TotalCPULimit) * 100.0
 		fmt.Printf(ansiGray+"     Limits:        "+ansiReset+ansiWhite+"%-12s"+ansiReset+ansiGray+"  факт: %.0f%% от limits"+ansiReset+"\n",
 			formatCPUValue(cluster.TotalCPULimit), cpuLimRatio)
-		// Потенциальная оптимизация лимитов с учётом буфера
 		optimalLim := cluster.TotalCPUActual * bufMul
 		if cluster.TotalCPULimit > optimalLim*1.1 {
 			savings := cluster.TotalCPULimit - optimalLim
@@ -169,7 +156,6 @@ func printFinalSummary(cluster *ClusterSummary, startTime time.Time, filename st
 	fmt.Println()
 	fmt.Println(thin)
 
-	// Память
 	fmt.Println()
 	fmt.Println(ansiYellow + ansiBold + "  💾 Память" + ansiReset)
 	fmt.Printf(ansiGray+"     Фактически:    "+ansiReset+ansiWhite+"%-12s"+ansiReset+"\n", formatMemoryValue(cluster.TotalMemActual))
@@ -184,7 +170,6 @@ func printFinalSummary(cluster *ClusterSummary, startTime time.Time, filename st
 		}
 		fmt.Printf(ansiGray+"     Limits:        "+ansiReset+ansiWhite+"%-12s"+ansiReset+ansiGray+"  факт: "+ansiReset+limColor+"%.0f%% от limits"+ansiReset+"\n",
 			formatMemoryValue(cluster.TotalMemLimit), memLimRatio)
-		// Потенциальная оптимизация лимитов с учётом буфера
 		optimalLim := cluster.TotalMemActual * bufMul
 		if cluster.TotalMemLimit > optimalLim*1.1 {
 			savings := cluster.TotalMemLimit - optimalLim
@@ -202,5 +187,101 @@ func printFinalSummary(cluster *ClusterSummary, startTime time.Time, filename st
 	fmt.Printf(ansiGray+"  ⏱️  Время:     "+ansiReset+ansiWhite+"%.2f сек"+ansiReset+"\n\n", elapsed.Seconds())
 	fmt.Println(ansiGreen + ansiBold + "  ✅ Анализ завершён!" + ansiReset)
 	fmt.Println()
+}
+
+type prometheusFailureAction int
+
+const (
+	actionSkipPrometheus prometheusFailureAction = iota
+	actionRetryNewURL
+	actionRetryInsecure
+	actionExit
+)
+
+// askPrometheusRetry - интерактивное меню при невозможности подключиться к Prometheus.
+// Показывает детальный лог ошибок по каждому проверенному endpoint.
+// Возвращает выбранное действие и (опционально) новый URL.
+func askPrometheusRetry(failedURL string, probes []ProbeResult) (action prometheusFailureAction, newURL string, newDuration string) {
+	sep := ansiCyan + strings.Repeat("─", ConsoleWidth) + ansiReset
+	reader := bufio.NewReader(os.Stdin)
+
+	for {
+		fmt.Println()
+		fmt.Println(sep)
+		fmt.Println(ansiYellow + ansiBold + "  ⚠️  Не удалось подключиться к Prometheus" + ansiReset)
+		fmt.Println(ansiGray + "     " + failedURL + ansiReset)
+		fmt.Println()
+		fmt.Println(ansiWhite + "  Лог проверки:" + ansiReset)
+		for _, p := range probes {
+			if p.OK {
+				fmt.Printf(ansiGreen+"  ✅  %s"+ansiReset+" → HTTP %d\n", p.URL, p.Status)
+			} else if p.Status > 0 {
+				fmt.Printf(ansiRed+"  ✗   %s"+ansiReset+ansiGray+" → %s"+ansiReset+"\n", p.URL, p.Err)
+			} else {
+				fmt.Printf(ansiRed+"  ✗   %s"+ansiReset+"\n", p.URL)
+				fmt.Printf(ansiGray+"       %s"+ansiReset+"\n", p.Err)
+			}
+		}
+		for _, p := range probes {
+			if strings.Contains(p.Err, "TLS") || strings.Contains(p.Err, "сертификат") {
+				fmt.Println()
+				fmt.Println(ansiYellow + "  💡 Обнаружена TLS-ошибка — попробуйте вариант [3] или [4]" + ansiReset)
+				break
+			}
+		}
+		fmt.Println(sep)
+		fmt.Println()
+		fmt.Println(ansiWhite + "  Что делать?" + ansiReset)
+		fmt.Println()
+		fmt.Println(ansiGreen + "  [1]" + ansiReset + " Продолжить без Prometheus " + ansiGray + "(использовать Metrics Server)" + ansiReset)
+		fmt.Println(ansiGreen + "  [2]" + ansiReset + " Указать другой URL Prometheus/Thanos")
+		fmt.Println(ansiGreen + "  [3]" + ansiReset + " Повторить с " + ansiYellow + "-k" + ansiReset + " " + ansiGray + "(пропустить проверку TLS-сертификата)" + ansiReset)
+		fmt.Println(ansiGreen + "  [4]" + ansiReset + " Указать новый URL " + ansiYellow + "и" + ansiReset + " включить " + ansiYellow + "-k" + ansiReset)
+		fmt.Println(ansiRed + "  [0]" + ansiReset + " Выйти")
+		fmt.Println()
+		fmt.Print(ansiCyan + "  Выбор: " + ansiReset)
+
+		line, _ := reader.ReadString('\n')
+		choice := strings.TrimSpace(line)
+
+		switch choice {
+		case "1":
+			return actionSkipPrometheus, "", ""
+
+		case "2":
+			fmt.Print(ansiCyan + "  Новый URL Prometheus/Thanos: " + ansiReset)
+			urlLine, _ := reader.ReadString('\n')
+			entered := strings.TrimSpace(urlLine)
+			if entered == "" {
+				printError("  URL не может быть пустым, попробуйте снова")
+				continue
+			}
+			fmt.Print(ansiCyan + "  Период анализа " + ansiGray + "(например: 1h, 7d; Enter = оставить текущий)" + ansiReset + ": ")
+			durLine, _ := reader.ReadString('\n')
+			return actionRetryNewURL, entered, strings.TrimSpace(durLine)
+
+		case "3":
+			return actionRetryInsecure, failedURL, ""
+
+		case "4":
+			fmt.Print(ansiCyan + "  Новый URL Prometheus/Thanos: " + ansiReset)
+			urlLine, _ := reader.ReadString('\n')
+			entered := strings.TrimSpace(urlLine)
+			if entered == "" {
+				printError("  URL не может быть пустым, попробуйте снова")
+				continue
+			}
+			fmt.Print(ansiCyan + "  Период анализа " + ansiGray + "(например: 1h, 7d; Enter = оставить текущий)" + ansiReset + ": ")
+			durLine, _ := reader.ReadString('\n')
+			insecureSkipTLS = true
+			return actionRetryNewURL, entered, strings.TrimSpace(durLine)
+
+		case "0":
+			return actionExit, "", ""
+
+		default:
+			printError("  Неверный выбор, введите цифру от 0 до 4")
+		}
+	}
 }
 

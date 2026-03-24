@@ -1,11 +1,5 @@
 package main
 
-// Модуль интеграции с Prometheus/Thanos и живого сбора метрик.
-//
-// Поддерживает два режима:
-//   - Исторический: запрос готовых данных из Prometheus/Thanos за период
-//   - Живой сбор: опрос Metrics Server каждые N секунд в течение заданного времени
-
 import (
 	"crypto/tls"
 	"encoding/json"
@@ -21,31 +15,21 @@ import (
 	"time"
 )
 
-// ============================================================================
-// Структуры ответа Prometheus HTTP API
-// ============================================================================
-
 // prometheusResponse - ответ от Prometheus/Thanos API
 type prometheusResponse struct {
 	Status string             `json:"status"`
 	Data   prometheusRespData `json:"data"`
 }
 
-// prometheusRespData - секция data ответа
 type prometheusRespData struct {
 	ResultType string              `json:"resultType"`
 	Result     []prometheusMetric  `json:"result"`
 }
 
-// prometheusMetric - одна временна́я серия
 type prometheusMetric struct {
 	Metric map[string]string `json:"metric"`
 	Values [][]interface{}   `json:"values"` // [[timestamp, "value"], ...]
 }
-
-// ============================================================================
-// HTTP-клиент Prometheus
-// ============================================================================
 
 // newHTTPClient - создаёт HTTP-клиент с учётом флага --insecure/-k
 func newHTTPClient(timeout time.Duration) *http.Client {
@@ -57,59 +41,66 @@ func newHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout, Transport: transport}
 }
 
-// checkPrometheusConnection - проверка доступности Prometheus/Thanos с детальным выводом ошибок.
-// Возвращает true если сервер отвечает, иначе печатает конкретную причину.
-func checkPrometheusConnection(promURL string) bool {
+type ProbeResult struct {
+	URL    string
+	Status int    // HTTP-статус (0 если сетевая ошибка)
+	Err    string // текст ошибки
+	OK     bool
+}
+
+// checkPrometheusConnection - проверка доступности Prometheus/Thanos.
+// Возвращает (успех, []ProbeResult с деталями по каждому endpoint).
+func checkPrometheusConnection(promURL string) (bool, []ProbeResult) {
 	client := newHTTPClient(5 * time.Second)
 	base := strings.TrimRight(promURL, "/")
-
-	// Пробуем /-/healthy (Prometheus) затем /api/v1/labels (Thanos)
 	endpoints := []string{"/-/healthy", "/api/v1/labels"}
-	var lastErr error
-	var lastStatus int
+	var probes []ProbeResult
 
 	for _, path := range endpoints {
 		fullURL := base + path
-		printStep(fmt.Sprintf("   → проверяю %s", fullURL))
+		p := ProbeResult{URL: fullURL}
 		resp, err := client.Get(fullURL)
 		if err != nil {
-			lastErr = err
-			// Различаем TLS-ошибку от сетевой
-			if strings.Contains(err.Error(), "certificate") ||
-				strings.Contains(err.Error(), "tls") ||
-				strings.Contains(err.Error(), "x509") {
-				printError(fmt.Sprintf("   ❌ Ошибка TLS-сертификата: %v", err))
-				printError("   💡 Попробуйте запустить с флагом -k для пропуска проверки сертификата")
-			} else if strings.Contains(err.Error(), "connection refused") {
-				printError(fmt.Sprintf("   ❌ Соединение отклонено — сервер не запущен или неверный порт: %s", promURL))
-			} else if strings.Contains(err.Error(), "no such host") ||
-				strings.Contains(err.Error(), "dial") {
-				printError(fmt.Sprintf("   ❌ Хост недоступен — проверьте DNS и сетевую доступность: %s", promURL))
-			} else {
-				printError(fmt.Sprintf("   ❌ Ошибка сети: %v", err))
+			errStr := err.Error()
+			switch {
+			case strings.Contains(errStr, "certificate") ||
+				strings.Contains(errStr, "x509") ||
+				strings.Contains(errStr, "tls"):
+				p.Err = fmt.Sprintf("ошибка TLS-сертификата: %v", err)
+			case strings.Contains(errStr, "connection refused"):
+				p.Err = fmt.Sprintf("соединение отклонено (сервер не запущен или неверный порт): %v", err)
+			case strings.Contains(errStr, "no such host"):
+				p.Err = fmt.Sprintf("хост не найден (DNS): %v", err)
+			case strings.Contains(errStr, "i/o timeout") ||
+				strings.Contains(errStr, "context deadline"):
+				p.Err = fmt.Sprintf("таймаут соединения (сервер не отвечает 5с): %v", err)
+			case strings.Contains(errStr, "dial"):
+				p.Err = fmt.Sprintf("сетевая ошибка: %v", err)
+			default:
+				p.Err = fmt.Sprintf("неизвестная ошибка: %v", err)
 			}
+			probes = append(probes, p)
 			continue
 		}
 		resp.Body.Close()
+		p.Status = resp.StatusCode
 		if resp.StatusCode < 400 {
-			return true
+			p.OK = true
+			probes = append(probes, p)
+			return true, probes
 		}
-		lastStatus = resp.StatusCode
+		p.Err = fmt.Sprintf("HTTP %d — проверьте URL и права доступа", resp.StatusCode)
+		probes = append(probes, p)
 	}
 
-	if lastErr == nil && lastStatus > 0 {
-		printError(fmt.Sprintf("   ❌ Сервер вернул HTTP %d — проверьте URL и права доступа", lastStatus))
-	}
-	return false
+	return false, probes
 }
 
-// labelValuesResponse - ответ /api/v1/label/{name}/values
 type labelValuesResponse struct {
 	Status string   `json:"status"`
 	Data   []string `json:"data"`
 }
 
-// getThanosLabelValues - получение всех значений лейбла из Thanos
 func getThanosLabelValues(promURL, labelName string) ([]string, error) {
 	apiURL := fmt.Sprintf("%s/api/v1/label/%s/values", strings.TrimRight(promURL, "/"), labelName)
 	client := newHTTPClient(10 * time.Second)
@@ -181,19 +172,17 @@ func detectThanosCluster(promURL, currentContext string) (labelName, clusterName
 			continue
 		}
 
-		// Случай 1: одно значение — кластер единственный
 		if len(values) == 1 {
 			return lbl, values[0], nil
 		}
 
-		// Случай 2: ищем совпадение с именем текущего контекста
 		for _, v := range values {
 			if v == currentContext || strings.Contains(v, currentContext) || strings.Contains(currentContext, v) {
 				return lbl, v, nil
 			}
 		}
 
-		// Случай 3: несколько кластеров, совпадения нет — показываем список
+		// Несколько кластеров без совпадения — показываем список и просим указать --cluster
 		printError(fmt.Sprintf("⚠️  Thanos содержит несколько кластеров (лейбл %q):", lbl))
 		for _, v := range values {
 			printError(fmt.Sprintf("     • %s", v))
@@ -202,11 +191,9 @@ func detectThanosCluster(promURL, currentContext string) (labelName, clusterName
 		return lbl, "", fmt.Errorf("не удалось автоматически определить кластер")
 	}
 
-	// Лейблы кластера не найдены — Prometheus без multi-cluster
 	return "", "", nil
 }
 
-// queryPrometheusRange - запрос диапазона данных (query_range)
 func queryPrometheusRange(promURL, query string, start, end time.Time, step time.Duration) ([]prometheusMetric, error) {
 	apiURL := strings.TrimRight(promURL, "/") + "/api/v1/query_range"
 
@@ -243,16 +230,8 @@ func queryPrometheusRange(promURL, query string, start, end time.Time, step time
 	return result.Data.Result, nil
 }
 
-// ============================================================================
-// Исторический режим: запрос из Prometheus/Thanos
-// ============================================================================
-
-// getPrometheusHistoricalMetrics - получение исторических метрик из Prometheus/Thanos
-// promURL     — адрес Prometheus или Thanos Query
-// duration    — глубина выборки (например, 10 минут означает "последние 10 минут")
-// namespaces  — список неймспейсов для фильтрации (пусто = все)
-// clusterLbl  — имя лейбла кластера (например "cluster"), пусто = не фильтровать
-// clusterVal  — значение лейбла кластера (например "prod-eu"), пусто = не фильтровать
+// getPrometheusHistoricalMetrics - получение исторических метрик из Prometheus/Thanos.
+// clusterLbl/clusterVal — фильтр по кластеру в Thanos, пусто = не фильтровать.
 func getPrometheusHistoricalMetrics(promURL string, duration time.Duration, namespaces []string, clusterLbl, clusterVal string) map[string]*PodHistory {
 	end := time.Now()
 	start := end.Add(-duration)
@@ -263,13 +242,11 @@ func getPrometheusHistoricalMetrics(promURL string, duration time.Duration, name
 		step = time.Minute
 	}
 
-	// Фильтр по неймспейсам
 	nsFilter := ""
 	if len(namespaces) > 0 {
 		nsFilter = fmt.Sprintf(`,namespace=~"%s"`, strings.Join(namespaces, "|"))
 	}
 
-	// Фильтр по кластеру (для Thanos multi-cluster)
 	clusterFilter := ""
 	if clusterLbl != "" && clusterVal != "" {
 		clusterFilter = fmt.Sprintf(`,%s="%s"`, clusterLbl, clusterVal)
@@ -281,7 +258,7 @@ func getPrometheusHistoricalMetrics(promURL string, duration time.Duration, name
 		nsFilter, clusterFilter,
 	)
 
-	// PromQL: Память в MiB (working set — реальное потребление без кешей)
+	// PromQL: Память в MiB (working set — реальное потребление без кешей страниц)
 	memQuery := fmt.Sprintf(
 		`sum by (namespace, pod) (container_memory_working_set_bytes{container!="POD",container!=""%s%s}) / 1048576`,
 		nsFilter, clusterFilter,
@@ -289,7 +266,6 @@ func getPrometheusHistoricalMetrics(promURL string, duration time.Duration, name
 
 	histories := make(map[string]*PodHistory)
 
-	// Запрос CPU
 	printStep("  📡 Запрос CPU метрик из Prometheus...")
 	cpuResults, err := queryPrometheusRange(promURL, cpuQuery, start, end, step)
 	if err != nil {
@@ -310,7 +286,6 @@ func getPrometheusHistoricalMetrics(promURL string, duration time.Duration, name
 		printStep(fmt.Sprintf("  ✅ CPU: получено данных по %d подам", len(cpuResults)))
 	}
 
-	// Запрос памяти
 	printStep("  📡 Запрос Memory метрик из Prometheus...")
 	memResults, err := queryPrometheusRange(promURL, memQuery, start, end, step)
 	if err != nil {
@@ -331,17 +306,12 @@ func getPrometheusHistoricalMetrics(promURL string, duration time.Duration, name
 		printStep(fmt.Sprintf("  ✅ Memory: получено данных по %d подам", len(memResults)))
 	}
 
-	// Считаем статистику по каждому поду
 	for _, hist := range histories {
 		calculatePodHistoryStats(hist)
 	}
 
 	return histories
 }
-
-// ============================================================================
-// Живой режим: сбор метрик через Metrics Server
-// ============================================================================
 
 // collectLiveMetrics - живой сбор метрик за указанный период.
 // Опрашивает Metrics Server каждые 30 секунд, накапливает семплы,
@@ -360,7 +330,6 @@ func collectLiveMetrics(duration time.Duration, namespaces []string) map[string]
 	printStep("   Нажмите Ctrl+C для досрочной остановки и генерации отчёта")
 	fmt.Println()
 
-	// Первый семпл немедленно
 	collectOneSample(histories, namespaces, &sample, deadline)
 
 	for time.Now().Before(deadline) {
@@ -375,7 +344,6 @@ func collectLiveMetrics(duration time.Duration, namespaces []string) map[string]
 	fmt.Println()
 	printStep(fmt.Sprintf("✅ Сбор завершён: %d семплов по %d подам", sample, len(histories)))
 
-	// Считаем статистику
 	for _, hist := range histories {
 		calculatePodHistoryStats(hist)
 	}
@@ -383,7 +351,6 @@ func collectLiveMetrics(duration time.Duration, namespaces []string) map[string]
 	return histories
 }
 
-// collectOneSample - один опрос метрик по всем неймспейсам
 func collectOneSample(histories map[string]*PodHistory, namespaces []string, sample *int, deadline time.Time) {
 	*sample++
 	remaining := time.Until(deadline).Round(time.Second)
@@ -410,11 +377,6 @@ func collectOneSample(histories map[string]*PodHistory, namespaces []string, sam
 	}
 }
 
-// ============================================================================
-// Вспомогательные функции
-// ============================================================================
-
-// getOrCreatePodHistory - получение или создание записи истории пода
 func getOrCreatePodHistory(histories map[string]*PodHistory, ns, pod string) *PodHistory {
 	key := ns + "/" + pod
 	if _, ok := histories[key]; !ok {
@@ -426,7 +388,6 @@ func getOrCreatePodHistory(histories map[string]*PodHistory, ns, pod string) *Po
 	return histories[key]
 }
 
-// parsePrometheusValue - извлечение значения из семпла Prometheus [[ts, "val"]]
 func parsePrometheusValue(v []interface{}) float64 {
 	if len(v) < 2 {
 		return 0
@@ -445,22 +406,19 @@ func parsePrometheusValue(v []interface{}) float64 {
 // calculatePodHistoryStats - расчёт статистики (min/avg/max/p95) по семплам.
 // После расчёта сырые семплы освобождаются — они больше не нужны.
 func calculatePodHistoryStats(hist *PodHistory) {
-	// CPU
 	if len(hist.CPUSamples) > 0 {
 		vals := extractValues(hist.CPUSamples)
 		hist.CPUMin, hist.CPUAvg, hist.CPUMax, hist.CPUP95 = calcStats(vals)
 		hist.SampleCount = len(hist.CPUSamples)
-		hist.CPUSamples = nil // освобождаем память
+		hist.CPUSamples = nil // освобождаем память после расчёта
 	}
-	// Память
 	if len(hist.MemSamples) > 0 {
 		vals := extractValues(hist.MemSamples)
 		hist.MemMin, hist.MemAvg, hist.MemMax, hist.MemP95 = calcStats(vals)
-		hist.MemSamples = nil // освобождаем память
+		hist.MemSamples = nil // освобождаем память после расчёта
 	}
 }
 
-// extractValues - извлечение числовых значений из семплов
 func extractValues(samples []MetricSample) []float64 {
 	vals := make([]float64, len(samples))
 	for i, s := range samples {
@@ -469,7 +427,6 @@ func extractValues(samples []MetricSample) []float64 {
 	return vals
 }
 
-// calcStats - расчёт min, avg, max, p95 по набору значений
 func calcStats(values []float64) (min, avg, max, p95 float64) {
 	if len(values) == 0 {
 		return
@@ -488,7 +445,6 @@ func calcStats(values []float64) (min, avg, max, p95 float64) {
 	}
 	avg = sum / float64(len(values))
 
-	// P95: 95-й перцентиль
 	idx := int(math.Ceil(0.95*float64(len(sorted)))) - 1
 	if idx < 0 {
 		idx = 0

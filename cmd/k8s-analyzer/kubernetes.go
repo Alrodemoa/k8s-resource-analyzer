@@ -1,8 +1,5 @@
 package main
 
-// Модуль работы с Kubernetes API через client-go
-// Все взаимодействия с кластером через нативный Go клиент (без kubectl)
-
 import (
 	"context"
 	"fmt"
@@ -27,36 +24,31 @@ var (
 	dynamicClient dynamic.Interface
 )
 
-// initKubernetesClient - инициализация клиента Kubernetes
 func initKubernetesClient() error {
 	config, err := getKubeConfig()
 	if err != nil {
 		return fmt.Errorf("не удалось получить конфигурацию: %v", err)
 	}
 
-	// Создаём основной клиент
 	clientset, err = kubernetes.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("не удалось создать клиент: %v", err)
 	}
 
-	// Создаём клиент для метрик
 	metricsClient, err = metricsv.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("не удалось создать клиент метрик: %v", err)
 	}
 
-	// Создаём dynamic клиент для работы с CRD (Gatekeeper)
+	// Dynamic клиент нужен только для Gatekeeper — ошибка не критична
 	dynamicClient, err = dynamic.NewForConfig(config)
 	if err != nil {
-		// Не критично - dynamic клиент нужен только для Gatekeeper
 		dynamicClient = nil
 	}
 
 	return nil
 }
 
-// getKubeConfig - получение конфигурации Kubernetes
 func getKubeConfig() (*rest.Config, error) {
 	// Сначала пробуем in-cluster конфигурацию (если запущено внутри пода)
 	config, err := rest.InClusterConfig()
@@ -64,7 +56,6 @@ func getKubeConfig() (*rest.Config, error) {
 		return config, nil
 	}
 
-	// Если не in-cluster, используем kubeconfig из файла
 	var kubeconfig string
 	if envKubeconfig := os.Getenv("KUBECONFIG"); envKubeconfig != "" {
 		kubeconfig = envKubeconfig
@@ -80,19 +71,16 @@ func getKubeConfig() (*rest.Config, error) {
 	return config, nil
 }
 
-// checkKubernetesConnection - проверка подключения к кластеру
 func checkKubernetesConnection() bool {
 	if err := initKubernetesClient(); err != nil {
 		return false
 	}
 
-	// Проверяем подключение запросом к API
 	ctx := context.Background()
 	_, err := clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{Limit: 1})
 	return err == nil
 }
 
-// getAllNamespaces - получение списка всех неймспейсов
 func getAllNamespaces() []string {
 	ctx := context.Background()
 	namespaces, err := clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
@@ -108,7 +96,6 @@ func getAllNamespaces() []string {
 	return result
 }
 
-// getNodesInfo - получение информации о нодах кластера
 func getNodesInfo() []*NodeInfo {
 	ctx := context.Background()
 	nodeList, err := clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
@@ -122,18 +109,16 @@ func getNodesInfo() []*NodeInfo {
 		nodeInfo := &NodeInfo{
 			Name:           node.Name,
 			CPUCapacity:    float64(node.Status.Capacity.Cpu().MilliValue()),
-			MemoryCapacity: float64(node.Status.Capacity.Memory().Value()) / (1024 * 1024), // В MiB
+			MemoryCapacity: float64(node.Status.Capacity.Memory().Value()) / (1024 * 1024), // в MiB
 		}
 		nodes = append(nodes, nodeInfo)
 	}
 
-	// Обогащаем данные метриками
 	enrichNodesWithMetrics(nodes)
 
 	return nodes
 }
 
-// enrichNodesWithMetrics - обогащение данных нод метриками использования
 func enrichNodesWithMetrics(nodes []*NodeInfo) {
 	ctx := context.Background()
 	nodeMetrics, err := metricsClient.MetricsV1beta1().NodeMetricses().List(ctx, metav1.ListOptions{})
@@ -142,7 +127,6 @@ func enrichNodesWithMetrics(nodes []*NodeInfo) {
 		return
 	}
 
-	// Создаём карту метрик по именам нод
 	metricsMap := make(map[string]struct {
 		cpu    int64
 		memory int64
@@ -153,11 +137,10 @@ func enrichNodesWithMetrics(nodes []*NodeInfo) {
 			memory int64
 		}{
 			cpu:    metric.Usage.Cpu().MilliValue(),
-			memory: metric.Usage.Memory().Value() / (1024 * 1024), // В MiB
+			memory: metric.Usage.Memory().Value() / (1024 * 1024), // в MiB
 		}
 	}
 
-	// Обновляем данные нод фактическим использованием
 	for _, node := range nodes {
 		if metrics, ok := metricsMap[node.Name]; ok {
 			node.CPUActual = float64(metrics.cpu)
@@ -166,7 +149,6 @@ func enrichNodesWithMetrics(nodes []*NodeInfo) {
 	}
 }
 
-// getPodResources - получение информации о ресурсах подов в неймспейсе
 func getPodResources(namespace string) []*PodResource {
 	ctx := context.Background()
 	podList, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
@@ -186,7 +168,6 @@ func getPodResources(namespace string) []*PodResource {
 	return pods
 }
 
-// convertPodToPodResource - конвертация Kubernetes Pod в структуру PodResource
 func convertPodToPodResource(pod *corev1.Pod, namespace string) *PodResource {
 	podResource := &PodResource{
 		Namespace: namespace,
@@ -195,19 +176,16 @@ func convertPodToPodResource(pod *corev1.Pod, namespace string) *PodResource {
 		PVCs:      []string{},
 	}
 
-	// Если нода не назначена
 	if podResource.NodeName == "" {
 		podResource.NodeName = "не назначена"
 	}
 
-	// Собираем привязанные PVC
 	for _, volume := range pod.Spec.Volumes {
 		if volume.PersistentVolumeClaim != nil {
 			podResource.PVCs = append(podResource.PVCs, volume.PersistentVolumeClaim.ClaimName)
 		}
 	}
 
-	// Суммируем ресурсы всех контейнеров
 	var totalCPUReq, totalCPULim, totalMemReq, totalMemLim int64
 	for _, container := range pod.Spec.Containers {
 		if container.Resources.Requests != nil {
@@ -228,7 +206,6 @@ func convertPodToPodResource(pod *corev1.Pod, namespace string) *PodResource {
 		}
 	}
 
-	// Форматируем значения для отображения
 	podResource.CPURequest = formatCPUValue(float64(totalCPUReq))
 	podResource.CPULimit = formatCPUValue(float64(totalCPULim))
 	podResource.MemoryRequest = formatMemoryValue(float64(totalMemReq) / (1024 * 1024))
@@ -239,7 +216,6 @@ func convertPodToPodResource(pod *corev1.Pod, namespace string) *PodResource {
 	return podResource
 }
 
-// getPodActualUsage - получение фактического использования ресурсов подов через Metrics API
 func getPodActualUsage(namespace string) map[string]map[string]string {
 	ctx := context.Background()
 	usage := make(map[string]map[string]string)
@@ -252,8 +228,6 @@ func getPodActualUsage(namespace string) map[string]map[string]string {
 
 	for _, podMetric := range podMetrics.Items {
 		var totalCPU, totalMem int64
-		
-		// Суммируем использование всех контейнеров в поде
 		for _, container := range podMetric.Containers {
 			totalCPU += container.Usage.Cpu().MilliValue()
 			totalMem += container.Usage.Memory().Value()
@@ -268,7 +242,6 @@ func getPodActualUsage(namespace string) map[string]map[string]string {
 	return usage
 }
 
-// getPVCsInfo - получение информации о Persistent Volume Claims
 func getPVCsInfo() []*PVCInfo {
 	ctx := context.Background()
 	pvcList, err := clientset.CoreV1().PersistentVolumeClaims("").List(ctx, metav1.ListOptions{})
@@ -286,23 +259,20 @@ func getPVCsInfo() []*PVCInfo {
 			Volume:    pvc.Spec.VolumeName,
 		}
 
-		// Емкость
 		if capacity, ok := pvc.Status.Capacity[corev1.ResourceStorage]; ok {
 			pvcInfo.Capacity = capacity.String()
 			pvcInfo.Requested = capacity.String()
 		}
 
-		// Класс хранилища
 		if pvc.Spec.StorageClassName != nil {
 			pvcInfo.StorageClass = *pvc.Spec.StorageClassName
 		}
 
-		// Режимы доступа
 		for _, mode := range pvc.Spec.AccessModes {
 			pvcInfo.AccessModes = append(pvcInfo.AccessModes, string(mode))
 		}
 
-		// Использование (будет 0, т.к. нужен дополнительный мониторинг)
+		// Фактическое использование недоступно через API — нужен дополнительный мониторинг
 		pvcInfo.Used = "0"
 		pvcInfo.UsedPercent = 0.0
 
@@ -312,7 +282,6 @@ func getPVCsInfo() []*PVCInfo {
 	return pvcs
 }
 
-// getPVsInfo - получение информации о Persistent Volumes
 func getPVsInfo() []*PVInfo {
 	ctx := context.Background()
 	pvList, err := clientset.CoreV1().PersistentVolumes().List(ctx, metav1.ListOptions{})
@@ -328,20 +297,17 @@ func getPVsInfo() []*PVInfo {
 			Status: string(pv.Status.Phase),
 		}
 
-		// Емкость
 		if capacity, ok := pv.Spec.Capacity[corev1.ResourceStorage]; ok {
 			pvInfo.Capacity = capacity.String()
 		}
 
-		// Класс хранилища
 		pvInfo.StorageClass = pv.Spec.StorageClassName
 
-		// Ссылка на PVC
 		if pv.Spec.ClaimRef != nil {
 			pvInfo.Claim = fmt.Sprintf("%s/%s", pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
 		}
 
-		// Использование (будет 0, т.к. нужен дополнительный мониторинг)
+		// Фактическое использование недоступно через API — нужен дополнительный мониторинг
 		pvInfo.Used = "0"
 		pvInfo.UsedPercent = 0.0
 
@@ -351,19 +317,16 @@ func getPVsInfo() []*PVInfo {
 	return pvs
 }
 
-// getGatekeeperStatus - получение статуса OPA Gatekeeper
 func getGatekeeperStatus() *GatekeeperStatus {
 	status := &GatekeeperStatus{}
 	ctx := context.Background()
 
-	// Проверяем наличие namespace gatekeeper-system
 	_, err := clientset.CoreV1().Namespaces().Get(ctx, "gatekeeper-system", metav1.GetOptions{})
 	if err != nil {
 		return status
 	}
 	status.Installed = true
 
-	// Проверяем поды Gatekeeper
 	pods, err := clientset.CoreV1().Pods("gatekeeper-system").List(ctx, metav1.ListOptions{})
 	if err == nil {
 		for _, pod := range pods.Items {
@@ -378,7 +341,6 @@ func getGatekeeperStatus() *GatekeeperStatus {
 		return status
 	}
 
-	// Получаем ConstraintTemplates
 	ctGVR := schema.GroupVersionResource{
 		Group:    "templates.gatekeeper.sh",
 		Version:  "v1",
@@ -386,7 +348,7 @@ func getGatekeeperStatus() *GatekeeperStatus {
 	}
 	ctList, err := dynamicClient.Resource(ctGVR).List(ctx, metav1.ListOptions{})
 	if err != nil {
-		// Пробуем v1beta1
+		// Пробуем версию v1beta1 как запасной вариант
 		ctGVR.Version = "v1beta1"
 		ctList, err = dynamicClient.Resource(ctGVR).List(ctx, metav1.ListOptions{})
 	}
@@ -408,15 +370,14 @@ func getGatekeeperStatus() *GatekeeperStatus {
 		status.ConstraintTemplates = append(status.ConstraintTemplates, tmplInfo)
 	}
 
-	// Получаем все ресурсы группы constraints.gatekeeper.sh через Discovery API —
-	// это надёжнее чем угадывать имя ресурса из Kind (pluralization может быть нестандартной)
+	// Используем Discovery API, а не угадываем имя ресурса из Kind (pluralization нестандартна)
 	constraintResList, err := clientset.Discovery().ServerResourcesForGroupVersion("constraints.gatekeeper.sh/v1beta1")
 	if err != nil {
 		return status
 	}
 	for _, res := range constraintResList.APIResources {
 		if strings.Contains(res.Name, "/") {
-			continue // пропускаем субресурсы
+			continue // субресурсы пропускаем
 		}
 		constraintGVR := schema.GroupVersionResource{
 			Group:    "constraints.gatekeeper.sh",
@@ -462,12 +423,10 @@ func getGatekeeperStatus() *GatekeeperStatus {
 	return status
 }
 
-// getRBACEntries - получение списка привязок ролей (RBAC)
 func getRBACEntries() []*RBACEntry {
 	ctx := context.Background()
 	var entries []*RBACEntry
 
-	// ClusterRoleBindings — права на уровне кластера
 	crbs, err := clientset.RbacV1().ClusterRoleBindings().List(ctx, metav1.ListOptions{})
 	if err == nil {
 		for _, crb := range crbs.Items {
@@ -488,7 +447,6 @@ func getRBACEntries() []*RBACEntry {
 		}
 	}
 
-	// RoleBindings — права на уровне неймспейса
 	rbs, err := clientset.RbacV1().RoleBindings("").List(ctx, metav1.ListOptions{})
 	if err == nil {
 		for _, rb := range rbs.Items {
